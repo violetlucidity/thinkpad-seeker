@@ -80,7 +80,35 @@ Started: 2026-02-24
 
 ## Phase 5 – systemd Service File
 
-**Status:** In Progress
+**Status:** Complete
+
+### Files Created
+- `thinkpad-tracker.service` – systemd unit that:
+  - Runs as unprivileged user `thinkpad`
+  - Starts after `network-online.target`
+  - Runs `python tracker.py --loop 360` from `/opt/thinkpad-tracker`
+  - Uses virtualenv at `/opt/thinkpad-tracker/.venv`
+  - Restarts on failure with 30 s delay
+  - Logs to systemd journal
+
+### Build Verification
+- File syntax verified (INI format checked visually)
+
+**Commit:** [Phase5.1] Add thinkpad-tracker.service systemd unit
+
+---
+
+## Build Complete
+
+All 5 phases executed and committed successfully.
+
+| Phase | Commit | Description |
+|-------|--------|-------------|
+| 1.1 | f4cfff9 | Create initial project files |
+| 2.1 | ddbe783 | Refine tracker core logic |
+| 3.1 | 8076057 | Add CLI flags and loop mode |
+| 4.1 | ea09906 | Add README.md |
+| 5.1 | (pending) | Add systemd service file |
 
 
 
