@@ -1,0 +1,44 @@
+govdeals:
+  enabled: true
+  base_url: "https://www.govdeals.com"
+  states:
+    - ME
+    - MA
+  min_price: 0.0
+  max_price: 500.0
+
+models:
+  - X220
+  - X220T
+  - X230
+  - X230T
+  - T420
+  - T420S
+  - T430
+  - T430S
+  - T520
+  - T530
+  - W520
+  - W530
+  - T440P
+  - W540
+  - W541
+
+email:
+  enabled: false
+  from_addr: "you@example.com"
+  to_addr: "you@example.com"
+  smtp_host: "smtp.example.com"
+  smtp_port: 587
+  username: "you@example.com"
+  password: "your_smtp_password"
+  use_tls: true
+
+push:
+  enabled: false
+  method: "pushover"  # "pushover" or "ntfy"
+  pushover:
+    api_token: "your_pushover_api_token"
+    user_key: "your_pushover_user_key"
+  ntfy:
+    url: "https://ntfy.sh/your_topic"
