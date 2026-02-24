@@ -66,7 +66,22 @@ Started: 2026-02-24
 
 ## Phase 4 – README
 
+**Status:** Complete
+
+### Files Created
+- `README.md` – full project documentation covering description, prerequisites, setup, config sections, run commands, browser_opener usage, systemd reference, ToS note, project structure
+
+### Build Verification
+- File created and content verified
+
+**Commit:** [Phase4.1] Add README.md
+
+---
+
+## Phase 5 – systemd Service File
+
 **Status:** In Progress
+
 
 
 
