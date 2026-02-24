@@ -47,7 +47,27 @@ Started: 2026-02-24
 
 ## Phase 3 – CLI Flags & Frequency Control
 
+**Status:** Complete
+
+### Changes to tracker.py
+- Added `argparse` CLI with `--once` (default), `--loop INTERVAL_MINUTES`, `--no-email`, `--no-push`
+- Added `run_cycle()` helper that encapsulates one poll+notify cycle
+- Loop mode prints timestamped summary per cycle; sleeps `interval * 60` seconds between cycles
+- `send_email` / `send_push` accept `enabled=` boolean so `--no-email` / `--no-push` override config
+- Added `time` import for loop sleep
+
+### Build Verification
+- `python3 -m py_compile tracker.py` – PASS
+- `python3 tracker.py --help` – PASS (argparse help displayed)
+
+**Commit:** [Phase3.1] Add CLI flags and loop mode to tracker.py
+
+---
+
+## Phase 4 – README
+
 **Status:** In Progress
+
 
 
 

@@ -1,10 +1,15 @@
 """
 ThinkPad Auction Tracker
 Tracks used Lenovo ThinkPad listings on GovDeals (Maine + Massachusetts).
+
+Usage:
+    python tracker.py [--once | --loop MINUTES] [--no-email] [--no-push]
 """
 
+import argparse
 import sqlite3
 import smtplib
+import time
 import yaml
 import requests
 from bs4 import BeautifulSoup
@@ -238,13 +243,12 @@ def upsert_listings(listings):
     return new_listings, updated_listings
 
 
-def send_email(new_listings, config, force=True):
+def send_email(new_listings, config, enabled=True):
     """
     Send a summary email for new listings.
-    Does nothing if email is disabled in config or there are no new listings.
-    force=True means caller controls whether email is active; when False, skip.
+    Does nothing when enabled=False, email disabled in config, or no new listings.
     """
-    if not force:
+    if not enabled:
         return
     if not config["email"].get("enabled", False):
         return
@@ -284,14 +288,14 @@ def send_email(new_listings, config, force=True):
         print(f"[EMAIL] Failed to send email: {e}")
 
 
-def send_push(new_listings, config, force=True):
+def send_push(new_listings, config, enabled=True):
     """
     Send push notification (Pushover or ntfy) for new listings.
     Pushover: one notification with count + preview titles.
     ntfy: one POST per run with text body summary.
-    force=True means caller controls whether push is active; when False, skip.
+    Does nothing when enabled=False, push disabled in config, or no new listings.
     """
-    if not force:
+    if not enabled:
         return
     if not config["push"].get("enabled", False):
         return
@@ -334,9 +338,10 @@ def send_push(new_listings, config, force=True):
         print(f"[PUSH] Unknown push method: {method}")
 
 
-def main():
-    config = load_config()
-    print(f"[{datetime.utcnow().isoformat()}] Polling GovDeals...")
+def run_cycle(config, email_enabled, push_enabled):
+    """Execute one poll + notify cycle. Returns (new_count, updated_count)."""
+    ts = datetime.utcnow().isoformat()
+    print(f"[{ts}] Polling GovDeals...")
 
     raw_listings = fetch_govdeals_listings(config)
     print(f"[INFO] Fetched {len(raw_listings)} raw listing(s).")
@@ -346,10 +351,70 @@ def main():
 
     new_listings, updated_listings = upsert_listings(matched)
 
-    send_email(new_listings, config)
-    send_push(new_listings, config)
+    send_email(new_listings, config, enabled=email_enabled)
+    send_push(new_listings, config, enabled=push_enabled)
 
     print(f"[DONE] {len(new_listings)} new, {len(updated_listings)} updated.")
+    return len(new_listings), len(updated_listings)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="ThinkPad auction tracker for GovDeals (ME + MA)."
+    )
+
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--once",
+        action="store_true",
+        default=True,
+        help="Run one poll + notify cycle and exit (default).",
+    )
+    mode.add_argument(
+        "--loop",
+        metavar="INTERVAL_MINUTES",
+        type=float,
+        default=None,
+        help="Run forever, sleeping INTERVAL_MINUTES between cycles.",
+    )
+
+    parser.add_argument(
+        "--no-email",
+        action="store_true",
+        help="Disable email notifications for this run (overrides config).",
+    )
+    parser.add_argument(
+        "--no-push",
+        action="store_true",
+        help="Disable push notifications for this run (overrides config).",
+    )
+
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    config = load_config()
+
+    email_enabled = not args.no_email
+    push_enabled = not args.no_push
+
+    if args.loop is not None:
+        interval_seconds = args.loop * 60
+        print(f"[LOOP] Running every {args.loop} minute(s). Ctrl+C to stop.")
+        cycle = 0
+        while True:
+            cycle += 1
+            ts = datetime.utcnow().isoformat()
+            print(f"\n=== Cycle #{cycle} at {ts} ===")
+            new_count, updated_count = run_cycle(config, email_enabled, push_enabled)
+            print(
+                f"[SUMMARY] Cycle #{cycle}: {new_count} new, {updated_count} updated. "
+                f"Next poll in {args.loop} min."
+            )
+            time.sleep(interval_seconds)
+    else:
+        run_cycle(config, email_enabled, push_enabled)
 
 
 if __name__ == "__main__":
