@@ -27,13 +27,16 @@ def fetch_govdeals_listings(config):
     Fetch current ThinkPad listings from GovDeals for configured states.
     Returns a list of dicts with keys:
         id, source, title, url, location, end_time, price, description
-    NOTE: CSS selectors below are stubs – adjust them to match the live HTML.
+
+    TODO: Verify the search URL structure against live GovDeals HTML.
+    TODO: Update CSS selectors (item container, title, price, location, end_time, link)
+          to match the actual rendered HTML returned by GovDeals search pages.
     """
     listings = []
     base_url = config["govdeals"]["base_url"]
     states = config["govdeals"].get("states", [])
-    min_price = config["govdeals"].get("min_price", 0.0)
-    max_price = config["govdeals"].get("max_price", 9999.0)
+    min_price = float(config["govdeals"].get("min_price", 0.0))
+    max_price = float(config["govdeals"].get("max_price", 9999.0))
 
     headers = {
         "User-Agent": (
@@ -43,8 +46,13 @@ def fetch_govdeals_listings(config):
     }
 
     for state in states:
-        # TODO: Adjust this search URL to match GovDeals actual search endpoint/params
-        search_url = f"{base_url}/index.cfm?fa=Main.AdvSearchResultsNew&searchPg=1&kWord=thinkpad&state={state}&category=&sortBy=ad&Agency=0&sType=1&aucType=&pricelow=&pricehigh=&pgSize=96"
+        # TODO: Adjust search URL params to match GovDeals actual search endpoint
+        search_url = (
+            f"{base_url}/index.cfm?fa=Main.AdvSearchResultsNew"
+            f"&searchPg=1&kWord=thinkpad&state={state}"
+            f"&category=&sortBy=ad&Agency=0&sType=1&aucType="
+            f"&pricelow=&pricehigh=&pgSize=96"
+        )
 
         try:
             response = requests.get(search_url, headers=headers, timeout=15)
@@ -55,12 +63,12 @@ def fetch_govdeals_listings(config):
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # TODO: Adjust CSS selector below to match actual listing card container
+        # TODO: Replace selector with the actual container element for each listing card
         items = soup.select("div.listingContainer, div.item-card, li.listing-item")
 
         for item in items:
             try:
-                # TODO: Adjust selectors to match actual HTML structure
+                # TODO: Replace each selector below with the correct one from live HTML
                 title_el = item.select_one("a.item-title, h3.listing-title, .title a")
                 price_el = item.select_one(".current-bid, .price, .bid-amount")
                 location_el = item.select_one(".location, .agency-location, .city-state")
@@ -84,12 +92,16 @@ def fetch_govdeals_listings(config):
                 except ValueError:
                     price = 0.0
 
-                # Skip if outside price range
+                # Skip listings outside configured price range
                 if price < min_price or (max_price > 0 and price > max_price):
                     continue
 
-                # TODO: Extract a stable listing ID from the URL or a data attribute
-                listing_id = href.split("itemnum=")[-1].split("&")[0] if "itemnum=" in href else href
+                # TODO: Extract a stable listing ID; GovDeals typically uses itemnum= in URL
+                if "itemnum=" in href:
+                    listing_id = href.split("itemnum=")[-1].split("&")[0]
+                else:
+                    # TODO: Fall back to a different stable identifier from the page
+                    listing_id = href
 
                 if not listing_id or not title:
                     continue
@@ -102,7 +114,8 @@ def fetch_govdeals_listings(config):
                     "location": location,
                     "end_time": end_time,
                     "price": price,
-                    "description": title,  # TODO: fetch detail page for full description if needed
+                    # TODO: Optionally fetch detail page for full description
+                    "description": title,
                 })
             except Exception as e:
                 print(f"[WARN] Error parsing listing item: {e}")
@@ -113,19 +126,25 @@ def fetch_govdeals_listings(config):
 
 def filter_listings(listings, config):
     """
-    Keep only listings that mention 'lenovo' or 'thinkpad' AND match a model token.
+    Keep only listings that contain 'lenovo' or 'thinkpad' AND match a model token
+    from the config.
+
+    Fast path: brand check first (cheap string search).
+    Then model token check.
     """
     models = [m.lower() for m in config.get("models", [])]
     filtered = []
 
     for listing in listings:
-        combined = (listing.get("title", "") + " " + listing.get("description", "")).lower()
+        combined = (
+            listing.get("title", "") + " " + listing.get("description", "")
+        ).lower()
 
-        # Fast path: must contain brand keyword
+        # Fast path: must include brand keyword
         if "lenovo" not in combined and "thinkpad" not in combined:
             continue
 
-        # Check model token match
+        # Require at least one model token match
         matched = [m for m in models if m in combined]
         if not matched:
             continue
@@ -138,27 +157,29 @@ def filter_listings(listings, config):
 
 def _init_db(conn):
     """Create the listings table if it does not exist."""
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE IF NOT EXISTS listings (
-            id            TEXT PRIMARY KEY,
-            source        TEXT,
-            title         TEXT,
-            url           TEXT,
-            location      TEXT,
-            end_time      TEXT,
-            first_seen    TEXT,
-            last_seen     TEXT,
-            price         REAL,
+            id             TEXT PRIMARY KEY,
+            source         TEXT,
+            title          TEXT,
+            url            TEXT,
+            location       TEXT,
+            end_time       TEXT,
+            first_seen     TEXT,
+            last_seen      TEXT,
+            price          REAL,
             matched_models TEXT
         )
-    """)
+        """
+    )
     conn.commit()
 
 
 def upsert_listings(listings):
     """
-    Insert new listings and update existing ones in thinkpads.db.
-    Returns (new_listings, updated_listings).
+    Insert new listings and update price/last_seen for existing ones in thinkpads.db.
+    Returns (new_listings, updated_listings) and prints counts.
     """
     now = datetime.utcnow().isoformat()
     conn = sqlite3.connect(DB_PATH)
@@ -176,7 +197,8 @@ def upsert_listings(listings):
             conn.execute(
                 """
                 INSERT INTO listings
-                    (id, source, title, url, location, end_time, first_seen, last_seen, price, matched_models)
+                    (id, source, title, url, location, end_time,
+                     first_seen, last_seen, price, matched_models)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -216,17 +238,25 @@ def upsert_listings(listings):
     return new_listings, updated_listings
 
 
-def send_email(new_listings, config):
-    """Send a summary email if there are new listings."""
+def send_email(new_listings, config, force=True):
+    """
+    Send a summary email for new listings.
+    Does nothing if email is disabled in config or there are no new listings.
+    force=True means caller controls whether email is active; when False, skip.
+    """
+    if not force:
+        return
     if not config["email"].get("enabled", False):
         return
     if not new_listings:
         return
 
-    lines = ["New ThinkPad listings found:\n"]
+    lines = [f"New ThinkPad listings found ({len(new_listings)}):\n"]
     for listing in new_listings:
         lines.append(
-            f"- **{listing['title']}** (${listing['price']:.2f}, {listing['location']})\n  {listing['url']}"
+            f"- **{listing['title']}** "
+            f"(${listing['price']:.2f}, {listing['location']})\n"
+            f"  {listing['url']}"
         )
 
     body = "\n".join(lines)
@@ -241,17 +271,28 @@ def send_email(new_listings, config):
             smtp = smtplib.SMTP(config["email"]["smtp_host"], config["email"]["smtp_port"])
             smtp.starttls()
         else:
-            smtp = smtplib.SMTP_SSL(config["email"]["smtp_host"], config["email"]["smtp_port"])
+            smtp = smtplib.SMTP_SSL(
+                config["email"]["smtp_host"], config["email"]["smtp_port"]
+            )
         smtp.login(config["email"]["username"], config["email"]["password"])
-        smtp.sendmail(config["email"]["from_addr"], config["email"]["to_addr"], msg.as_string())
+        smtp.sendmail(
+            config["email"]["from_addr"], config["email"]["to_addr"], msg.as_string()
+        )
         smtp.quit()
         print(f"[EMAIL] Sent notification for {len(new_listings)} new listing(s).")
     except Exception as e:
         print(f"[EMAIL] Failed to send email: {e}")
 
 
-def send_push(new_listings, config):
-    """Send push notification (Pushover or ntfy) for new listings."""
+def send_push(new_listings, config, force=True):
+    """
+    Send push notification (Pushover or ntfy) for new listings.
+    Pushover: one notification with count + preview titles.
+    ntfy: one POST per run with text body summary.
+    force=True means caller controls whether push is active; when False, skip.
+    """
+    if not force:
+        return
     if not config["push"].get("enabled", False):
         return
     if not new_listings:
@@ -271,9 +312,11 @@ def send_push(new_listings, config):
             "message": summary,
         }
         try:
-            resp = requests.post("https://api.pushover.net/1/messages.json", data=payload, timeout=10)
+            resp = requests.post(
+                "https://api.pushover.net/1/messages.json", data=payload, timeout=10
+            )
             resp.raise_for_status()
-            print(f"[PUSH/Pushover] Notification sent.")
+            print("[PUSH/Pushover] Notification sent.")
         except Exception as e:
             print(f"[PUSH/Pushover] Failed: {e}")
 
@@ -283,9 +326,10 @@ def send_push(new_listings, config):
         try:
             resp = requests.post(url, data=summary.encode("utf-8"), timeout=10)
             resp.raise_for_status()
-            print(f"[PUSH/ntfy] Notification sent.")
+            print("[PUSH/ntfy] Notification sent.")
         except Exception as e:
             print(f"[PUSH/ntfy] Failed: {e}")
+
     else:
         print(f"[PUSH] Unknown push method: {method}")
 
