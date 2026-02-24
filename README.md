@@ -1,15 +1,20 @@
 # ThinkPad Auction Tracker
 
-A Python tool that monitors [GovDeals](https://www.govdeals.com) government surplus auctions in Maine and Massachusetts for used Lenovo ThinkPad laptops. When new matching listings appear it can notify you by email and/or push notification (Pushover or ntfy).
+A Python tool that monitors GovDeals government surplus auctions in Maine and
+Massachusetts for used Lenovo ThinkPad laptops, stores new listings in a local
+SQLite database, and optionally sends notifications via email and/or push
+(Pushover or ntfy).
 
-A companion script (`browser_opener.py`) opens Municibid and HiBid search pages in your browser for manual review — no scraping involved there.
+A companion script (`browser_opener.py`) opens Municibid and HiBid search pages
+in your default browser for quick manual browsing — it does **not** scrape those
+sites.
 
 ---
 
 ## Prerequisites
 
-- Python 3.11 or newer
-- `pip` (comes with Python)
+- Python 3.11 or later
+- `pip` (bundled with Python)
 
 ---
 
@@ -18,8 +23,8 @@ A companion script (`browser_opener.py`) opens Municibid and HiBid search pages 
 ### 1. Clone or download the project
 
 ```bash
-git clone <repo-url>
-cd thinkpad-tracker
+git clone https://github.com/youruser/thinkpad-seeker.git
+cd thinkpad-seeker
 ```
 
 ### 2. Create and activate a virtual environment (Linux / macOS)
@@ -29,7 +34,12 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
-On Windows use `.venv\Scripts\activate` instead.
+On Windows (PowerShell):
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
 
 ### 3. Install dependencies
 
@@ -39,120 +49,126 @@ pip install -r requirements.txt
 
 ### 4. Edit `config.yaml`
 
-Open `config.yaml` and fill in the relevant sections:
+Open `config.yaml` and fill in the sections below.
 
 #### `govdeals`
 
 | Key | Description |
 |-----|-------------|
-| `enabled` | Set to `true` to scrape GovDeals |
-| `base_url` | GovDeals root URL (default is correct) |
-| `states` | List of two-letter state codes to search (e.g. `[ME, MA]`) |
-| `min_price` | Skip listings below this price (USD) |
-| `max_price` | Skip listings above this price (USD) |
+| `enabled` | Set to `true` to enable GovDeals scraping. |
+| `base_url` | Root URL for GovDeals (default: `https://www.govdeals.com`). |
+| `states` | List of two-letter state codes to search (`ME`, `MA`, etc.). |
+| `min_price` | Skip listings below this price (USD float). |
+| `max_price` | Skip listings above this price (USD float, `0` = no limit). |
 
 #### `models`
 
-List of ThinkPad model tokens to match (e.g. `X230`, `T430S`). The tracker checks that each title/description contains one of these tokens **and** includes "lenovo" or "thinkpad".
+A list of ThinkPad model tokens (e.g., `X230`, `T440P`). Any listing whose
+title or description contains one of these tokens (case-insensitive) *and* also
+contains "lenovo" or "thinkpad" will be tracked.
 
 #### `email`
 
 | Key | Description |
 |-----|-------------|
-| `enabled` | Set to `true` to send emails |
-| `from_addr` | Sender email address |
-| `to_addr` | Recipient email address |
-| `smtp_host` | SMTP server hostname |
-| `smtp_port` | SMTP port (587 for STARTTLS, 465 for SSL) |
-| `username` | SMTP login username |
-| `password` | SMTP login password |
-| `use_tls` | `true` for STARTTLS (port 587); `false` for SSL (port 465) |
+| `enabled` | `true` to send email on new listings. |
+| `from_addr` | Sender address. |
+| `to_addr` | Recipient address. |
+| `smtp_host` | SMTP server hostname (e.g., `smtp.gmail.com`). |
+| `smtp_port` | SMTP port (typically `587` for STARTTLS, `465` for SSL). |
+| `username` | SMTP login username (usually your email address). |
+| `password` | SMTP password or app-specific password. |
+| `use_tls` | `true` for STARTTLS (port 587); `false` for SMTP_SSL (port 465). |
 
-Gmail users: create an [App Password](https://myaccount.google.com/apppasswords) and use it as `password`.
+**Gmail tip:** Enable 2-factor authentication and generate an
+[App Password](https://myaccount.google.com/apppasswords) to use as `password`.
 
 #### `push`
 
 | Key | Description |
 |-----|-------------|
-| `enabled` | Set to `true` to send push notifications |
-| `method` | `"pushover"` or `"ntfy"` |
+| `enabled` | `true` to send push notifications. |
+| `method` | `"pushover"` or `"ntfy"`. |
 
-**Pushover** — register at [pushover.net](https://pushover.net), create an application to get an API token, and copy your user key:
+**Pushover** (`push.pushover`):
 
-```yaml
-push:
-  method: pushover
-  pushover:
-    api_token: "aAbBcCdDeEfF..."
-    user_key: "uUvVwWxXyYzZ..."
-```
+- Register at [pushover.net](https://pushover.net/) and create an application.
+- Copy the **API Token** into `api_token`.
+- Copy your **User Key** into `user_key`.
 
-**ntfy** — create a topic at [ntfy.sh](https://ntfy.sh) (or self-host) and set the URL:
+**ntfy** (`push.ntfy`):
 
-```yaml
-push:
-  method: ntfy
-  ntfy:
-    url: "https://ntfy.sh/my-secret-topic"
-```
+- Create a topic at [ntfy.sh](https://ntfy.sh/) (or self-host).
+- Set `url` to `https://ntfy.sh/your_topic_name`.
 
 ---
 
 ## How to run
 
-### Single poll (run once and exit)
+### Single poll (default)
 
 ```bash
 python tracker.py --once
 ```
 
-### Continuous polling every 3 hours
+Fetches listings once, updates the database, sends notifications if new
+listings are found, then exits.
+
+### Continuous polling
 
 ```bash
 python tracker.py --loop 180
 ```
 
-### Suppress notifications for one run
+Polls every 180 minutes (3 hours) indefinitely. Press Ctrl+C to stop.
+
+### Disable notifications for one run
 
 ```bash
 python tracker.py --once --no-email --no-push
 ```
 
-### Open Municibid and HiBid in your browser
+### Open Municibid and HiBid browser tabs
 
 ```bash
 python browser_opener.py
 ```
 
-This opens two browser tabs:
+Opens the following pages in your default browser for manual browsing:
 
-- **Municibid Maine** — Maine government surplus auctions (active listings)
-- **HiBid New Hampshire** — laptops and consumer electronics category
+- **Municibid Maine** — Maine government surplus listings
+- **HiBid New Hampshire** — NH laptops / consumer electronics
 
----
-
-## Running as a background service
-
-See [`thinkpad-tracker.service`](thinkpad-tracker.service) for a systemd unit file that runs the tracker continuously on a Linux server.
+> **Note:** `browser_opener.py` does **not** scrape either site. It only calls
+> `webbrowser.open_new_tab()` to open the URLs.
 
 ---
 
-## Notes on Terms of Service
+## Database
 
-- The GovDeals scraper sends standard HTTP requests to public search pages.
-  Review GovDeals' [Terms of Use](https://www.govdeals.com/index.cfm?fa=Main.Terms) before running in production and add reasonable poll intervals (60+ minutes recommended).
-- `browser_opener.py` does **not** scrape Municibid or HiBid — it only opens their public search pages in your default browser, the same as clicking a bookmark.
+Listings are stored in `thinkpads.db` (SQLite) in the project directory.
+Schema:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT PK | Stable listing ID (e.g., `govdeals-12345`) |
+| `source` | TEXT | Data source (`govdeals`) |
+| `title` | TEXT | Listing title |
+| `url` | TEXT | Listing URL |
+| `location` | TEXT | Seller location |
+| `end_time` | TEXT | Auction end time (as scraped) |
+| `first_seen` | TEXT | UTC ISO-8601 timestamp of first discovery |
+| `last_seen` | TEXT | UTC ISO-8601 timestamp of last poll |
+| `price` | REAL | Current bid/price in USD |
+| `matched_models` | TEXT | Comma-separated matched model tokens |
 
 ---
 
-## Project structure
+## Terms of Service
 
-```
-thinkpad-tracker/
-├── config.yaml          # All configuration (edit this)
-├── requirements.txt     # Python dependencies
-├── tracker.py           # Main tracker + CLI
-├── browser_opener.py    # Opens Municibid/HiBid tabs
-├── thinkpad-tracker.service  # systemd unit (optional)
-└── thinkpads.db         # SQLite database (created on first run)
-```
+GovDeals is a public government auction platform; please review their
+[Terms of Use](https://www.govdeals.com/index.cfm?fa=Main.TOU) before running
+the scraper at high frequency.
+
+The Municibid and HiBid script (`browser_opener.py`) **does not scrape** either
+website — it only opens URLs in your browser, the same as clicking a bookmark.
