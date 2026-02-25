@@ -1,0 +1,19 @@
+[Unit]
+Description=ThinkPad Auction Tracker
+Documentation=https://github.com/your-org/thinkpad-tracker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=thinkpad
+WorkingDirectory=/opt/thinkpad-tracker
+ExecStart=/opt/thinkpad-tracker/.venv/bin/python tracker.py --loop 360
+Restart=on-failure
+RestartSec=30s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=thinkpad-tracker
+
+[Install]
+WantedBy=multi-user.target

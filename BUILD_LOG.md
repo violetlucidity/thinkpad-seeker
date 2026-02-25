@@ -1,0 +1,116 @@
+# BUILD LOG
+
+## ThinkPad Auction Tracker Build Log
+
+Started: 2026-02-24
+
+---
+
+## Phase 1 – Project Creation (config + requirements + tracker + browser_opener)
+
+**Status:** Complete
+
+### Files Created
+- `config.yaml` – GovDeals scraper config, model filter list, email and push notification settings
+- `requirements.txt` – requests, PyYAML, beautifulsoup4
+- `tracker.py` – Core tracker with load_config, fetch_govdeals_listings, filter_listings, upsert_listings, send_email, send_push, main
+- `browser_opener.py` – Opens Municibid/HiBid tabs via webbrowser module
+
+### Build Verification
+- `python3 -m py_compile tracker.py` – PASS
+- `python3 -m py_compile browser_opener.py` – PASS
+
+**Commit:** [Phase1.1] Create initial project files
+
+---
+
+## Phase 2 – Refine Tracker Core Logic
+
+**Status:** Complete
+
+### Changes to tracker.py
+- All imports corrected to stdlib + requests/PyYAML/bs4 only
+- Switched to stdlib `sqlite3` (no external sqlite helper)
+- GovDeals listing IDs use stable `govdeals-{itemnum}` string format
+- Clear TODO comments added in `fetch_govdeals_listings` for CSS selectors and URL params
+- `filter_listings`: fast-path brand check (lenovo/thinkpad), then model token substring match
+- `upsert_listings`: returns `(new_list, updated_list)` tuple, prints counts
+- `send_email`: no-op when no new listings; Markdown bullet list body
+- `send_push`: Pushover = one notification with count+titles; ntfy = one POST per run
+
+### Build Verification
+- `python3 -m py_compile tracker.py` – PASS
+
+**Commit:** [Phase2.1] Refine tracker core logic
+
+---
+
+## Phase 3 – CLI Flags & Frequency Control
+
+**Status:** Complete
+
+### Changes to tracker.py
+- Added `argparse` CLI with `--once` (default), `--loop INTERVAL_MINUTES`, `--no-email`, `--no-push`
+- Added `run_cycle()` helper that encapsulates one poll+notify cycle
+- Loop mode prints timestamped summary per cycle; sleeps `interval * 60` seconds between cycles
+- `send_email` / `send_push` accept `enabled=` boolean so `--no-email` / `--no-push` override config
+- Added `time` import for loop sleep
+
+### Build Verification
+- `python3 -m py_compile tracker.py` – PASS
+- `python3 tracker.py --help` – PASS (argparse help displayed)
+
+**Commit:** [Phase3.1] Add CLI flags and loop mode to tracker.py
+
+---
+
+## Phase 4 – README
+
+**Status:** Complete
+
+### Files Created
+- `README.md` – full project documentation covering description, prerequisites, setup, config sections, run commands, browser_opener usage, systemd reference, ToS note, project structure
+
+### Build Verification
+- File created and content verified
+
+**Commit:** [Phase4.1] Add README.md
+
+---
+
+## Phase 5 – systemd Service File
+
+**Status:** Complete
+
+### Files Created
+- `thinkpad-tracker.service` – systemd unit that:
+  - Runs as unprivileged user `thinkpad`
+  - Starts after `network-online.target`
+  - Runs `python tracker.py --loop 360` from `/opt/thinkpad-tracker`
+  - Uses virtualenv at `/opt/thinkpad-tracker/.venv`
+  - Restarts on failure with 30 s delay
+  - Logs to systemd journal
+
+### Build Verification
+- File syntax verified (INI format checked visually)
+
+**Commit:** [Phase5.1] Add thinkpad-tracker.service systemd unit
+
+---
+
+## Build Complete
+
+All 5 phases executed and committed successfully.
+
+| Phase | Commit | Description |
+|-------|--------|-------------|
+| 1.1 | f4cfff9 | Create initial project files |
+| 2.1 | ddbe783 | Refine tracker core logic |
+| 3.1 | 8076057 | Add CLI flags and loop mode |
+| 4.1 | ea09906 | Add README.md |
+| 5.1 | (pending) | Add systemd service file |
+
+
+
+
+
