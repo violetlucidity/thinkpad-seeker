@@ -18,6 +18,7 @@ from datetime import datetime        # For timestamping scrape runs
 
 import yaml                          # PyYAML — reads the project's config.yaml
 from flask import Flask, jsonify, render_template, request  # Flask web framework
+from pywebpush import webpush, WebPushException  # Web Push delivery (Component 4)
 
 # APScheduler — runs the scrape on a background thread, on a cron schedule
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -135,6 +136,31 @@ def send_push_notifications(new_count):
         return
     # Full implementation added in Step 6 (Component 5)
     print(f"[PUSH] {new_count} new listing(s) — push notifications will be sent once Component 5 is wired.")
+
+# ── Web Push subscription routes (Component 4) ───────────────────────────────
+
+@app.route('/subscribe', methods=['POST'])
+def subscribe():
+    """
+    Receives a Web Push subscription object from the browser.
+    Stores it so the server can send push notifications to this device.
+    """
+    subscription = request.get_json()      # parse the JSON body sent by the browser
+    subs = load_subscriptions()            # load existing subscriptions from disk
+
+    # Avoid storing duplicate subscriptions from the same device
+    if subscription not in subs:
+        subs.append(subscription)          # add the new subscription to the list
+        save_subscriptions(subs)           # persist the updated list to disk
+
+    return jsonify({'status': 'subscribed'}), 201   # 201 Created
+
+
+@app.route('/vapid-public-key', methods=['GET'])
+def vapid_public_key():
+    """Returns the VAPID public key to the browser for push subscription setup."""
+    # The browser needs this key to identify our server as the authorised sender
+    return jsonify({'publicKey': config.get('vapid', {}).get('public_key', '')})
 
 # ── Flask routes ──────────────────────────────────────────────────────────────
 

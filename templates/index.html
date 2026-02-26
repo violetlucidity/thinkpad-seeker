@@ -252,6 +252,51 @@ document.getElementById('open-selected-btn').addEventListener('click', async () 
     }
 });
 
+// ── Push subscription helpers (Component 4) ───────────────────────────────
+
+// Request push notification permission and subscribe to the server.
+// Called automatically after service worker registration succeeds.
+async function requestPushPermission(registration) {
+    // Ask the user for notification permission (shows the browser prompt)
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+        console.warn('Push notification permission denied.');
+        return;                            // user declined — skip subscription
+    }
+
+    // Fetch the server's VAPID public key so we can subscribe with it
+    const resp = await fetch('/vapid-public-key');
+    const { publicKey } = await resp.json();
+
+    // Convert the VAPID public key from hex string to the Uint8Array format
+    // required by the browser's pushManager.subscribe() call
+    const convertedKey = hexStringToUint8Array(publicKey);
+
+    // Subscribe to push notifications using the server's public key
+    const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,             // Android requires this to be true
+        applicationServerKey: convertedKey // identifies our server as the sender
+    });
+
+    // Send the subscription object to the Flask backend for storage
+    await fetch('/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscription) // serialize the PushSubscription object
+    });
+}
+
+// Helper: convert a hex string to a Uint8Array for VAPID key handling.
+// The browser's Web Push API expects applicationServerKey as a Uint8Array.
+function hexStringToUint8Array(hexString) {
+    const bytes = new Uint8Array(hexString.length / 2);  // two hex chars per byte
+    for (let i = 0; i < bytes.length; i++) {
+        // Parse each pair of hex characters as a decimal byte value
+        bytes[i] = parseInt(hexString.substr(i * 2, 2), 16);
+    }
+    return bytes;
+}
+
 // ── Service worker registration (Component 3) ─────────────────────────────
 // Register the service worker for push notification support.
 // Only runs in browsers that support service workers (Chrome, Firefox, Edge).

@@ -97,7 +97,28 @@ provided as required by the spec for documentation and portability purposes.
 - `requirements.txt` — added `Pillow>=10.0.0` (used to generate icons).
 
 ## STEP 5 — Web Push Subscription Endpoint (Component 4)
-*(to be filled after Step 5 commit)*
+
+### Files created
+- `generate_vapid_keys.py` — one-time script that generates EC VAPID key pair
+  and prints hex values for pasting into config.yaml.
+
+### Files modified
+- `run.py` — added `from pywebpush import webpush, WebPushException` import;
+  added `/subscribe` POST route (stores subscription, deduplicates);
+  added `/vapid-public-key` GET route (returns public key for browser).
+  `load_subscriptions()` and `save_subscriptions()` were already present as
+  stubs from Step 2 and are now wired to the routes.
+- `templates/index.html` — added `requestPushPermission(registration)` and
+  `hexStringToUint8Array(hexString)` functions to the `<script>` block,
+  placed before the SW registration code that calls `requestPushPermission`.
+- `requirements.txt` — added `pywebpush>=2.0.0`.
+- `config.yaml` — added `vapid:` block with placeholder public/private key
+  values and claims sub email.
+
+### Already completed in earlier steps
+- `config.json` in `.gitignore` — done in Step 2
+- `subscriptions.json` in `.gitignore` — done in Step 2
+- `vapid` block in `config.json.example` — done in Step 2
 
 ## STEP 6 — Push Notification on Scrape Completion (Component 5)
 *(to be filled after Step 6 commit)*

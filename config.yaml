@@ -51,3 +51,12 @@ schedule:
   hour: 8
   minute: 0
   timezone: "America/New_York"
+
+# VAPID keys for Web Push authentication (Component 4)
+# Run: python generate_vapid_keys.py
+# Paste the output values below. Do NOT commit this file after adding real keys.
+vapid:
+  public_key: "REPLACE_WITH_OUTPUT_OF_generate_vapid_keys.py"
+  private_key: "REPLACE_WITH_OUTPUT_OF_generate_vapid_keys.py"
+  claims:
+    sub: "mailto:your@email.com"
