@@ -163,7 +163,13 @@ All Component 6 markup and JavaScript was correctly implemented in Step 2 when
 the Flask template was first created. Nothing was modified in this step.
 
 ## STEP 8 — Notifications Manual Steps
-*(to be filled after Step 8 commit)*
+
+### Files modified
+- `MANUAL STEPS.md` — appended the full NOTIFICATIONS SETUP section from
+  SAR-notifications-pwa.md with "ThinkPad Seeker" substituted for the project
+  name placeholder and "config.yaml" used in place of "config.json" (this
+  project uses YAML config). Contains Steps 1–5 covering Tailscale, VAPID
+  key generation, push subscription, Windows auto-start, and smoke-test.
 
 ## STEP 9 — Final Verification
 *(to be filled after Step 9 commit)*
