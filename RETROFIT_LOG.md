@@ -142,7 +142,25 @@ provided as required by the spec for documentation and portability purposes.
   - `CaptchaDetectedError` is imported by `run.py` so it can be caught there.
 
 ## STEP 7 — Open Selected Button (Component 6)
-*(to be filled after Step 7 commit)*
+
+### Verification results — all requirements already satisfied
+
+| Requirement | Status | Location in index.html |
+|---|---|---|
+| Button has `id="open-selected-btn"` | ✅ Correct | toolbar `<button>` element |
+| Each checkbox has `class="listing-checkbox"` | ✅ Correct | listing loop `<input>` |
+| Each checkbox has `data-url` attribute | ✅ Correct | listing loop `<input>` |
+| Sequential `window.open()` with 300ms delay | ✅ Correct | Open Selected `for` loop |
+| Confirmation for more than 5 items | ✅ Correct | `if (checked.length > 5)` guard |
+| "Select All / Deselect All" toggle above list | ✅ Correct | `#select-all-btn` + JS toggle |
+| `<meta name="viewport">` tag | ✅ Present | `<head>` |
+| `.container` uses `max-width: 700px` with `margin: 0 auto` | ✅ Present | CSS block |
+| `.toolbar` uses `flex-wrap: wrap` | ✅ Present | CSS block |
+| Oversized checkbox tap targets (1.25rem × 1.25rem) | ✅ Present | CSS block |
+
+### No changes required
+All Component 6 markup and JavaScript was correctly implemented in Step 2 when
+the Flask template was first created. Nothing was modified in this step.
 
 ## STEP 8 — Notifications Manual Steps
 *(to be filled after Step 8 commit)*
