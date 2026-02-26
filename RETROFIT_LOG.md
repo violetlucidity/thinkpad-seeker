@@ -121,7 +121,25 @@ provided as required by the spec for documentation and portability purposes.
 - `vapid` block in `config.json.example` — done in Step 2
 
 ## STEP 6 — Push Notification on Scrape Completion (Component 5)
-*(to be filled after Step 6 commit)*
+
+### Files modified
+- `run.py`:
+  - Added `import sys` and the ntfy-monitor import block
+    (`sys.path.insert(0, '../ntfy-monitor')`, `import notify`, guarded with
+    `_NOTIFY_AVAILABLE` flag so the app still works if ntfy-monitor is absent).
+  - Replaced `send_push_notifications()` stub with the full pywebpush
+    implementation: builds JSON payload, iterates subscriptions, calls
+    `webpush()`, removes HTTP-410-expired subscriptions automatically.
+  - Wrapped `run_scrape()` in try/except:
+    - Happy path: `notify.success(f"{new_count} new listing(s) found.", project="ThinkPad Seeker")`
+    - CAPTCHA path: `notify.manual_step("Manual action required — check the scraper.", project="ThinkPad Seeker")`
+    - Error path: `notify.error(f"Scrape failed: {str(e)}", project="ThinkPad Seeker")`
+- `tracker.py`:
+  - Added `CaptchaDetectedError` exception class.
+  - Added CAPTCHA/login-wall detection in `fetch_govdeals_listings()`: checks
+    response text for "captcha", "please log in", "access denied" and raises
+    `CaptchaDetectedError` if any are found.
+  - `CaptchaDetectedError` is imported by `run.py` so it can be caught there.
 
 ## STEP 7 — Open Selected Button (Component 6)
 *(to be filled after Step 7 commit)*

@@ -14,6 +14,7 @@ Then open http://localhost:5000 in your browser (or phone via Tailscale).
 
 import json                          # Standard JSON parsing for config and push payloads
 import sqlite3                       # Standard SQLite library for reading listings
+import sys                           # For inserting the ntfy-monitor path (Component 5)
 from datetime import datetime        # For timestamping scrape runs
 
 import yaml                          # PyYAML — reads the project's config.yaml
@@ -24,8 +25,18 @@ from pywebpush import webpush, WebPushException  # Web Push delivery (Component 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 
+# ntfy-monitor integration (Component 5) — path to the ntfy-monitor repo
+# The notify module provides success(), error(), and manual_step() helpers
+sys.path.insert(0, '../ntfy-monitor')   # adjust this path if the repo lives elsewhere
+try:
+    import notify                        # ntfy-monitor notify module
+    _NOTIFY_AVAILABLE = True             # flag used to guard notify calls below
+except ImportError:
+    _NOTIFY_AVAILABLE = False            # ntfy-monitor not installed — calls are skipped
+    print("[WARN] ntfy-monitor not found at ../ntfy-monitor; ntfy notifications disabled.")
+
 # Import existing scraper functions from tracker.py (unchanged)
-from tracker import load_config, run_cycle
+from tracker import load_config, run_cycle, CaptchaDetectedError
 
 # ── Flask application ─────────────────────────────────────────────────────────
 
@@ -56,11 +67,34 @@ def run_scrape():
     Zero-argument wrapper called by APScheduler on the cron schedule.
     Delegates to run_cycle() from tracker.py with notifications enabled.
     """
-    # Reload config on each run so schedule changes take effect without restart
-    cfg = load_config("config.yaml")
-    new_count, _ = run_cycle(cfg, email_enabled=True, push_enabled=True)
-    # Notify subscribed phones how many new listings were found (Component 5)
-    send_push_notifications(new_count)
+    try:
+        # Reload config on each run so schedule changes take effect without restart
+        cfg = load_config("config.yaml")
+        new_count, _ = run_cycle(cfg, email_enabled=True, push_enabled=True)
+        # Notify subscribed phones how many new listings were found (Component 5)
+        send_push_notifications(new_count)
+        # Send ntfy success notification so the operator knows the scrape completed
+        if _NOTIFY_AVAILABLE:
+            notify.success(
+                f"{new_count} new listing(s) found.",   # result summary
+                project="ThinkPad Seeker"               # project label shown in ntfy message
+            )
+    except CaptchaDetectedError:
+        # GovDeals returned a CAPTCHA or login wall — human intervention required
+        print("[WARN] CAPTCHA or login wall detected on GovDeals.")
+        if _NOTIFY_AVAILABLE:
+            notify.manual_step(
+                "Manual action required — check the scraper.",  # action description
+                project="ThinkPad Seeker"                       # project label
+            )
+    except Exception as e:
+        # Unexpected scrape failure — send an error notification so we know it broke
+        print(f"[ERROR] Scrape failed: {e}")
+        if _NOTIFY_AVAILABLE:
+            notify.error(
+                f"Scrape failed: {str(e)}",  # include the exception message
+                project="ThinkPad Seeker"    # project label shown in ntfy message
+            )
 
 
 # Read schedule from config; fall back to Tue/Fri 08:00 if not set
@@ -126,7 +160,6 @@ def send_push_notifications(new_count):
     """
     Sends a Web Push notification to all subscribed devices.
     Called automatically when a scrape run finishes.
-    Expanded with pywebpush in Component 5.
 
     Args:
         new_count (int): Number of new listings found in this scrape run.
@@ -134,8 +167,37 @@ def send_push_notifications(new_count):
     if new_count == 0:
         # Do not send a notification if no new listings were found
         return
-    # Full implementation added in Step 6 (Component 5)
-    print(f"[PUSH] {new_count} new listing(s) — push notifications will be sent once Component 5 is wired.")
+
+    subs = load_subscriptions()            # load all registered phone subscriptions
+    if not subs:
+        print("No push subscriptions registered. Open the app on your phone first.")
+        return
+
+    # Build the notification payload as a JSON string
+    payload = json.dumps({
+        "title": "New listings ready",                                  # notification title
+        "body": f"{new_count} new item{'s' if new_count != 1 else ''} found. Tap to review.",  # body text
+        "url": "/"                                                      # opens the checklist when tapped
+    })
+
+    vapid_cfg = config.get('vapid', {})    # read VAPID credentials from config
+
+    for subscription in list(subs):        # iterate over a copy so we can remove expired subs
+        try:
+            webpush(
+                subscription_info=subscription,                         # the browser's subscription object
+                data=payload,                                           # JSON payload string
+                vapid_private_key=vapid_cfg.get('private_key', ''),    # server's VAPID private key
+                vapid_claims=vapid_cfg.get('claims', {})               # claims dict including sub email
+            )
+        except WebPushException as e:
+            # If a subscription is expired or invalid (HTTP 410 Gone), remove it from the store
+            if e.response and e.response.status_code == 410:
+                print(f"Subscription expired, removing: {subscription.get('endpoint','')[:40]}...")
+                subs.remove(subscription)    # drop the dead subscription from the list
+                save_subscriptions(subs)     # persist the updated list immediately
+            else:
+                print(f"Push failed: {e}")   # log other errors without removing the subscription
 
 # ── Web Push subscription routes (Component 4) ───────────────────────────────
 

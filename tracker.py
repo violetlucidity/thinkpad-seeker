@@ -21,6 +21,10 @@ from email.mime.multipart import MIMEMultipart
 DB_PATH = "thinkpads.db"
 
 
+class CaptchaDetectedError(Exception):
+    """Raised when a GovDeals response looks like a CAPTCHA or login wall."""
+
+
 def load_config(path="config.yaml"):
     """Load configuration from YAML file."""
     with open(path, "r") as f:
@@ -65,6 +69,13 @@ def fetch_govdeals_listings(config):
         except requests.RequestException as e:
             print(f"[WARN] Failed to fetch GovDeals for state {state}: {e}")
             continue
+
+        # Detect CAPTCHA or login wall by checking for known marker strings in the page
+        page_lower = response.text.lower()
+        if "captcha" in page_lower or "please log in" in page_lower or "access denied" in page_lower:
+            raise CaptchaDetectedError(
+                f"GovDeals returned a CAPTCHA or login wall for state {state}"
+            )
 
         soup = BeautifulSoup(response.text, "html.parser")
 
