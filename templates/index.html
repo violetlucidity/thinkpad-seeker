@@ -5,6 +5,10 @@
   <!-- Viewport tag ensures the page scales correctly on phone screens -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ThinkPad Seeker</title>
+  <!-- PWA manifest link (Component 3) -->
+  <link rel="manifest" href="/static/manifest.json">
+  <!-- Theme color for Android Chrome address bar (Component 3) -->
+  <meta name="theme-color" content="#333333">
   <style>
     /* ── Base / mobile-first layout ─────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; }
@@ -248,8 +252,23 @@ document.getElementById('open-selected-btn').addEventListener('click', async () 
     }
 });
 
-// ── Service worker registration (Component 3 — placeholder) ────────────────
-// Full SW registration code is added in Step 4 (PWA component).
+// ── Service worker registration (Component 3) ─────────────────────────────
+// Register the service worker for push notification support.
+// Only runs in browsers that support service workers (Chrome, Firefox, Edge).
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', async () => {
+        try {
+            // Register sw.js from the /static path served by Flask
+            const registration = await navigator.serviceWorker.register('/static/sw.js');
+            console.log('Service worker registered:', registration.scope);
+            // After registration, request push permission from the user (Component 4)
+            await requestPushPermission(registration);
+        } catch (err) {
+            // Log registration errors; don't throw — the page still works without SW
+            console.error('Service worker registration failed:', err);
+        }
+    });
+}
 </script>
 </body>
 </html>

@@ -80,7 +80,21 @@ provided as required by the spec for documentation and portability purposes.
   TASK SCHEDULER SETUP section from the spec (6 numbered steps).
 
 ## STEP 4 — PWA Manifest and Service Worker (Component 3)
-*(to be filled after Step 4 commit)*
+
+### Files created
+- `static/manifest.json` — PWA manifest; name: "ThinkPad Seeker",
+  short_name: "TP Seeker", theme/background colors, two icon entries.
+- `static/sw.js` — service worker handling `install`, `activate`, `push`, and
+  `notificationclick` events, verbatim from spec with project-name comment.
+- `static/icons/icon-192.png` — 192×192 placeholder icon (dark-blue background,
+  white "TS" initials), generated via Pillow.
+- `static/icons/icon-512.png` — 512×512 placeholder icon (same design).
+
+### Files modified
+- `templates/index.html` — added `<link rel="manifest">` and
+  `<meta name="theme-color">` to `<head>`; replaced SW placeholder comment
+  with the full `navigator.serviceWorker.register()` block from spec.
+- `requirements.txt` — added `Pillow>=10.0.0` (used to generate icons).
 
 ## STEP 5 — Web Push Subscription Endpoint (Component 4)
 *(to be filled after Step 5 commit)*
