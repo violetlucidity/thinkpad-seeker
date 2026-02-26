@@ -113,6 +113,47 @@
       padding: 2rem;
       color: #999;
     }
+
+    /* ── Bookmark button ─────────────────────────────────────────────── */
+    .bookmark-btn {
+      background: none;        /* no background — just the star glyph */
+      border: none;
+      font-size: 1.2rem;
+      line-height: 1;
+      padding: 0.1rem 0.2rem;
+      cursor: pointer;
+      color: #ccc;             /* unfilled star is grey */
+      flex-shrink: 0;
+      transition: color 0.15s, transform 0.1s;
+    }
+    /* Filled star turns amber */
+    .bookmark-btn.active { color: #f5a623; }
+    /* Brief pop animation when toggled */
+    .bookmark-btn:active { transform: scale(1.3); }
+
+    /* ── Bookmarks section ───────────────────────────────────────────── */
+    .bookmarks-section {
+      margin-bottom: 1.5rem;
+    }
+    .bookmarks-section h2 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #888;
+      margin: 0 0 0.5rem;
+    }
+    /* Bookmarked cards get a subtle amber left border to distinguish them */
+    .bookmarks-section .listing-card {
+      border-left: 3px solid #f5a623;
+    }
+
+    /* Divider between bookmarks and the main list */
+    .section-divider {
+      border: none;
+      border-top: 1px solid #e0e0e0;
+      margin: 1rem 0 1rem;
+    }
   </style>
 </head>
 <body>
@@ -134,42 +175,66 @@
     <span id="scrape-status"></span>
   </div>
 
-  <!-- ── Listing checklist ─────────────────────────────────────────────── -->
+  {# ── Reusable listing card macro — defined first, called below ───────── #}
+  {% macro listing_card(listing, idx, prefix='') %}
+  <div class="listing-card">
+    <!--
+      listing-checkbox class and data-url attribute are required by Component 6.
+      The "Open Selected" button reads data-url to know which URL to open.
+    -->
+    <input
+      type="checkbox"
+      class="listing-checkbox"
+      data-url="{{ listing.url }}"
+      id="chk-{{ prefix }}-{{ idx }}"
+    >
+    <div class="listing-info">
+      <a
+        class="listing-title"
+        href="{{ listing.url }}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >{{ listing.title }}</a>
+      <div class="listing-meta">
+        ${{ "%.2f"|format(listing.price) }}
+        &nbsp;·&nbsp; {{ listing.location }}
+        {% if listing.end_time %}
+          &nbsp;·&nbsp; ends {{ listing.end_time }}
+        {% endif %}
+        &nbsp;·&nbsp; first seen {{ listing.first_seen[:10] }}
+      </div>
+      {% if listing.matched_models %}
+        <span class="listing-models">{{ listing.matched_models }}</span>
+      {% endif %}
+    </div>
+    <!-- Bookmark star button: filled (★) when bookmarked, outline (☆) otherwise -->
+    <button
+      class="bookmark-btn {% if listing.bookmarked %}active{% endif %}"
+      data-id="{{ listing.id }}"
+      data-bookmarked="{{ '1' if listing.bookmarked else '0' }}"
+      title="{% if listing.bookmarked %}Remove bookmark{% else %}Bookmark this listing{% endif %}"
+      aria-label="{% if listing.bookmarked %}Remove bookmark{% else %}Bookmark{% endif %}"
+    >{% if listing.bookmarked %}&#9733;{% else %}&#9734;{% endif %}</button>
+  </div>
+  {% endmacro %}
+
+  <!-- ── Bookmarks section (pinned at top) ────────────────────────────── -->
+  {% if bookmarked %}
+  <section class="bookmarks-section">
+    <h2>&#9733; Bookmarks</h2>
+    {% for listing in bookmarked %}
+    {{ listing_card(listing, loop.index, prefix='bk') }}
+    {% endfor %}
+  </section>
+  <hr class="section-divider">
+  {% endif %}
+
+  <!-- ── Full listing checklist ────────────────────────────────────────── -->
   {% if listings %}
     {% for listing in listings %}
-    <div class="listing-card">
-      <!--
-        listing-checkbox class and data-url attribute are required by Component 6.
-        The "Open Selected" button reads data-url to know which URL to open.
-      -->
-      <input
-        type="checkbox"
-        class="listing-checkbox"
-        data-url="{{ listing.url }}"
-        id="chk-{{ loop.index }}"
-      >
-      <div class="listing-info">
-        <a
-          class="listing-title"
-          href="{{ listing.url }}"
-          target="_blank"
-          rel="noopener noreferrer"
-        >{{ listing.title }}</a>
-        <div class="listing-meta">
-          ${{ "%.2f"|format(listing.price) }}
-          &nbsp;·&nbsp; {{ listing.location }}
-          {% if listing.end_time %}
-            &nbsp;·&nbsp; ends {{ listing.end_time }}
-          {% endif %}
-          &nbsp;·&nbsp; first seen {{ listing.first_seen[:10] }}
-        </div>
-        {% if listing.matched_models %}
-          <span class="listing-models">{{ listing.matched_models }}</span>
-        {% endif %}
-      </div>
-    </div>
+    {{ listing_card(listing, loop.index, prefix='ls') }}
     {% endfor %}
-  {% else %}
+  {% elif not bookmarked %}
     <div class="empty-state">
       No listings yet. Click <strong>Run Scrape Now</strong> to fetch the latest.
     </div>
@@ -250,6 +315,42 @@ document.getElementById('open-selected-btn').addEventListener('click', async () 
         // Wait 300 ms between opens to avoid popup blocking on mobile
         await new Promise(resolve => setTimeout(resolve, 300));
     }
+});
+
+// ── Bookmark toggle ────────────────────────────────────────────────────────
+// Sends a POST to /bookmark with the listing id and desired state.
+// Updates the star icon immediately (optimistic UI) then reloads to refresh
+// the bookmarks section at the top.
+async function toggleBookmark(btn) {
+    const id = btn.dataset.id;                         // stable listing id
+    const newState = btn.dataset.bookmarked !== '1';   // flip the current state
+
+    // Optimistic UI: swap the star immediately so the user gets instant feedback
+    btn.textContent = newState ? '\u2605' : '\u2606';  // ★ or ☆
+    btn.classList.toggle('active', newState);           // amber or grey
+    btn.dataset.bookmarked = newState ? '1' : '0';     // update the attribute
+
+    try {
+        const resp = await fetch('/bookmark', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, bookmarked: newState })  // send id + new state
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        // Reload after a brief pause so the bookmarks section at the top updates
+        setTimeout(() => location.reload(), 400);
+    } catch (err) {
+        // Revert the optimistic update if the request failed
+        btn.textContent = newState ? '\u2606' : '\u2605';
+        btn.classList.toggle('active', !newState);
+        btn.dataset.bookmarked = newState ? '0' : '1';
+        console.error('Bookmark toggle failed:', err);
+    }
+}
+
+// Attach click listeners to every bookmark button rendered on the page
+document.querySelectorAll('.bookmark-btn').forEach(btn => {
+    btn.addEventListener('click', () => toggleBookmark(btn));
 });
 
 // ── Push subscription helpers (Component 4) ───────────────────────────────

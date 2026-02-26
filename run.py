@@ -119,22 +119,50 @@ scheduler.start()                            # starts the scheduler thread along
 DB_PATH = "thinkpads.db"                     # same path used by tracker.py
 
 
+def _ensure_bookmark_column():
+    """
+    Adds a 'bookmarked' column to the listings table if it doesn't exist yet.
+    Safe to call on every startup — the ALTER TABLE is silently ignored when
+    the column is already present (SQLite raises OperationalError in that case).
+    """
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute(
+            "ALTER TABLE listings ADD COLUMN bookmarked INTEGER DEFAULT 0"
+        )
+        conn.commit()
+        conn.close()
+    except sqlite3.OperationalError:
+        pass   # column already exists — nothing to do
+
+
+# Run the migration immediately at startup so the column is always present
+_ensure_bookmark_column()
+
+
 def get_all_listings():
     """
-    Reads all tracked listings from the SQLite database, newest first.
-    Returns a list of dicts matching the listings table schema.
+    Reads all tracked listings from the SQLite database.
+    Returns (bookmarked, rest) — two separate lists so the template can
+    display bookmarked entries in their own section at the top.
+    Bookmarked list is ordered by title; the rest are newest-first.
     """
     try:
         conn = sqlite3.connect(DB_PATH)      # open (or create) the database file
         conn.row_factory = sqlite3.Row       # makes rows accessible by column name
-        rows = conn.execute(
-            "SELECT * FROM listings ORDER BY first_seen DESC"
-        ).fetchall()
+        # Bookmarked listings — shown pinned at the top of the page
+        bookmarked = [dict(r) for r in conn.execute(
+            "SELECT * FROM listings WHERE bookmarked = 1 ORDER BY title"
+        ).fetchall()]
+        # All other listings — newest first
+        rest = [dict(r) for r in conn.execute(
+            "SELECT * FROM listings WHERE bookmarked = 0 ORDER BY first_seen DESC"
+        ).fetchall()]
         conn.close()
-        return [dict(row) for row in rows]   # convert Row objects to plain dicts
+        return bookmarked, rest
     except sqlite3.OperationalError:
         # Table doesn't exist yet — no scrapes have run
-        return []
+        return [], []
 
 # ── Push notification helpers (Component 4 / 5 stubs — expanded later) ───────
 
@@ -230,10 +258,35 @@ def vapid_public_key():
 def index():
     """
     Main page: renders the listing checklist for review.
-    Reads all rows from the database and passes them to the template.
+    Passes bookmarked and regular listings separately so the template can
+    display them in two distinct sections.
     """
-    listings = get_all_listings()            # fetch all rows from thinkpads.db
-    return render_template('index.html', listings=listings)
+    bookmarked, listings = get_all_listings()   # split into pinned and regular
+    return render_template('index.html', bookmarked=bookmarked, listings=listings)
+
+
+@app.route('/bookmark', methods=['POST'])
+def toggle_bookmark():
+    """
+    Toggles the bookmarked state for a single listing.
+    Expects JSON body: {"id": "<listing-id>", "bookmarked": true|false}
+    Returns the new state so the client can update the UI without a reload.
+    """
+    data = request.get_json()                        # parse the JSON request body
+    listing_id = data.get('id', '')                  # stable listing ID (e.g. govdeals-12345)
+    new_state = 1 if data.get('bookmarked') else 0   # convert bool to SQLite integer
+
+    try:
+        conn = sqlite3.connect(DB_PATH)              # open the database
+        conn.execute(
+            "UPDATE listings SET bookmarked = ? WHERE id = ?",
+            (new_state, listing_id)                  # parameterised query — no SQL injection
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'ok', 'id': listing_id, 'bookmarked': bool(new_state)})
+    except sqlite3.Error as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @app.route('/run-scrape', methods=['POST'])
