@@ -71,7 +71,13 @@ config. `run.py` reads `config.yaml` via PyYAML. `config.json.example` is
 provided as required by the spec for documentation and portability purposes.
 
 ## STEP 3 — Windows Task Scheduler XML (Component 2)
-*(to be filled after Step 3 commit)*
+
+### Files created
+- `windows-task-scheduler.xml` — importable Task Scheduler entry that launches
+  `run.py` via `pythonw.exe` at Windows logon. Contains inline XML comments
+  marking the two paths that need manual substitution.
+- `MANUAL STEPS.md` — new documentation file; initial content is the
+  TASK SCHEDULER SETUP section from the spec (6 numbered steps).
 
 ## STEP 4 — PWA Manifest and Service Worker (Component 3)
 *(to be filled after Step 4 commit)*
