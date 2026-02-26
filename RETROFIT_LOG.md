@@ -45,7 +45,30 @@ Because no Flask app, HTML template, or JavaScript exists, the retrofit will:
 ---
 
 ## STEP 2 — APScheduler (Component 1)
-*(to be filled after Step 2 commit)*
+
+### Files created
+- `run.py` — new Flask application entry point; contains the `app` Flask variable,
+  APScheduler initialization, `run_scrape()` wrapper, database helper, and stub
+  push-notification helpers. Imports `load_config` and `run_cycle` from `tracker.py`
+  without modifying that file.
+- `templates/index.html` — main Jinja2 template; listing checklist UI with
+  "Run Scrape Now", "Select All", and "Open Selected" buttons. All Component 6
+  markup and JavaScript included here for completeness.
+- `config.json.example` — standardized SAR config template with `schedule` block,
+  `vapid` block, and `tailscale_ip` placeholder, per spec.
+- `.gitignore` — created with entries for `jobs.sqlite`, `thinkpads.db`,
+  `config.json`, and `subscriptions.json`.
+
+### Files modified
+- `requirements.txt` — added `flask>=3.0.0`, `apscheduler>=3.10.0`,
+  `sqlalchemy>=2.0.0` (SQLAlchemy is required by APScheduler's SQLAlchemyJobStore).
+- `config.yaml` — added `schedule:` block (days: tue,fri, hour: 8, minute: 0,
+  timezone: America/New_York) per spec default values.
+
+### Adaptation note
+The project uses `config.yaml` (YAML) rather than `config.json` as its runtime
+config. `run.py` reads `config.yaml` via PyYAML. `config.json.example` is
+provided as required by the spec for documentation and portability purposes.
 
 ## STEP 3 — Windows Task Scheduler XML (Component 2)
 *(to be filled after Step 3 commit)*

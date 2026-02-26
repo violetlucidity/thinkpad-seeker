@@ -1,0 +1,27 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# APScheduler job store (Component 1) — regenerated on each run
+jobs.sqlite
+
+# Database file — local data, not versioned
+thinkpads.db
+
+# Config file containing secrets (VAPID private key, SMTP password, etc.)
+# Copy config.json.example → config.json and fill in your values
+config.json
+
+# Push subscription store (Component 4) — device-specific, not versioned
+subscriptions.json
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp

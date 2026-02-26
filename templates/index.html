@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Viewport tag ensures the page scales correctly on phone screens -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThinkPad Seeker</title>
+  <style>
+    /* ── Base / mobile-first layout ─────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 1rem;
+      background: #f5f5f5;
+      color: #222;
+    }
+
+    /* Central content column — readable on both phone and desktop */
+    .container {
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 0.5rem;
+      color: #333;
+    }
+
+    /* ── Toolbar ─────────────────────────────────────────────────────── */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;       /* wraps to a second row on narrow screens */
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      align-items: center;
+    }
+
+    button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    /* Primary action buttons */
+    #run-scrape-btn  { background: #2a7ae2; color: #fff; }
+    #open-selected-btn { background: #27ae60; color: #fff; }
+    /* Toggle and status text */
+    #select-all-btn  { background: #eee; color: #333; }
+    #scrape-status   { font-size: 0.85rem; color: #666; margin-left: auto; }
+
+    /* ── Listing cards ───────────────────────────────────────────────── */
+    .listing-card {
+      background: #fff;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    /* Checkbox column — large tap target for phone use */
+    .listing-card input[type="checkbox"] {
+      width: 1.25rem;
+      height: 1.25rem;
+      margin-top: 0.2rem;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .listing-info { flex: 1; min-width: 0; }
+
+    /* Listing title links */
+    .listing-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: #2a7ae2;
+      text-decoration: none;
+      word-break: break-word;
+    }
+    .listing-title:hover { text-decoration: underline; }
+
+    /* Meta line: price · location · end time */
+    .listing-meta {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 0.2rem;
+    }
+
+    /* Badge showing matched model tokens */
+    .listing-models {
+      font-size: 0.75rem;
+      background: #e8f0fe;
+      color: #2a7ae2;
+      border-radius: 3px;
+      padding: 1px 5px;
+      display: inline-block;
+      margin-top: 0.2rem;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>ThinkPad Seeker</h1>
+
+  <!-- ── Toolbar ───────────────────────────────────────────────────────── -->
+  <div class="toolbar">
+    <!-- Run Scrape Now: POSTs to /run-scrape, refreshes the page on success -->
+    <button id="run-scrape-btn">Run Scrape Now</button>
+
+    <!-- Select All / Deselect All toggle — required by Component 6 -->
+    <button id="select-all-btn">Select All</button>
+
+    <!-- Open Selected: opens checked listing URLs in the browser (Component 6) -->
+    <button id="open-selected-btn">Open Selected</button>
+
+    <!-- Status text updated by JavaScript after a scrape run -->
+    <span id="scrape-status"></span>
+  </div>
+
+  <!-- ── Listing checklist ─────────────────────────────────────────────── -->
+  {% if listings %}
+    {% for listing in listings %}
+    <div class="listing-card">
+      <!--
+        listing-checkbox class and data-url attribute are required by Component 6.
+        The "Open Selected" button reads data-url to know which URL to open.
+      -->
+      <input
+        type="checkbox"
+        class="listing-checkbox"
+        data-url="{{ listing.url }}"
+        id="chk-{{ loop.index }}"
+      >
+      <div class="listing-info">
+        <a
+          class="listing-title"
+          href="{{ listing.url }}"
+          target="_blank"
+          rel="noopener noreferrer"
+        >{{ listing.title }}</a>
+        <div class="listing-meta">
+          ${{ "%.2f"|format(listing.price) }}
+          &nbsp;·&nbsp; {{ listing.location }}
+          {% if listing.end_time %}
+            &nbsp;·&nbsp; ends {{ listing.end_time }}
+          {% endif %}
+          &nbsp;·&nbsp; first seen {{ listing.first_seen[:10] }}
+        </div>
+        {% if listing.matched_models %}
+          <span class="listing-models">{{ listing.matched_models }}</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">
+      No listings yet. Click <strong>Run Scrape Now</strong> to fetch the latest.
+    </div>
+  {% endif %}
+</div>
+
+<script>
+// ── Run Scrape Now ──────────────────────────────────────────────────────────
+// POSTs to /run-scrape, shows status, then reloads the page to show new rows.
+document.getElementById('run-scrape-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('run-scrape-btn');
+    const status = document.getElementById('scrape-status');
+
+    // Disable the button while the scrape is running to prevent double-clicks
+    btn.disabled = true;
+    btn.textContent = 'Scraping…';
+    status.textContent = '';
+
+    try {
+        // POST to the Flask endpoint; no body needed
+        const resp = await fetch('/run-scrape', { method: 'POST' });
+        const data = await resp.json();
+
+        if (data.status === 'ok') {
+            // Show a short summary then reload so the listing list refreshes
+            status.textContent = `Done: ${data.new} new, ${data.updated} updated.`;
+            setTimeout(() => location.reload(), 1500);   // reload after 1.5 s
+        } else {
+            status.textContent = `Error: ${data.message}`;
+            btn.disabled = false;
+            btn.textContent = 'Run Scrape Now';
+        }
+    } catch (err) {
+        // Network or server error
+        status.textContent = `Request failed: ${err}`;
+        btn.disabled = false;
+        btn.textContent = 'Run Scrape Now';
+    }
+});
+
+// ── Select All / Deselect All toggle ───────────────────────────────────────
+// Clicks once to check all listing checkboxes; clicks again to uncheck them.
+let allSelected = false;
+document.getElementById('select-all-btn').addEventListener('click', () => {
+    allSelected = !allSelected;   // flip the toggle state
+    // Apply the new checked state to every listing checkbox on the page
+    document.querySelectorAll('.listing-checkbox').forEach(cb => {
+        cb.checked = allSelected;
+    });
+    // Update button label to reflect the next action
+    document.getElementById('select-all-btn').textContent =
+        allSelected ? 'Deselect All' : 'Select All';
+});
+
+// ── Open Selected button (Component 6) ────────────────────────────────────
+// Opens all checked listing URLs in the mobile browser, one after another.
+// A short delay between opens prevents the browser from treating them as a popup burst.
+document.getElementById('open-selected-btn').addEventListener('click', async () => {
+    // Gather all checked checkboxes
+    const checked = document.querySelectorAll('.listing-checkbox:checked');
+    if (checked.length === 0) {
+        alert('Please check at least one listing first.');
+        return;
+    }
+
+    // Confirm if more than 5 items are selected (prevents accidental tab floods)
+    if (checked.length > 5) {
+        const confirmed = confirm(
+            `Open ${checked.length} listings? This will open ${checked.length} tabs.`
+        );
+        if (!confirmed) return;
+    }
+
+    for (const checkbox of checked) {
+        const url = checkbox.dataset.url;  // read the URL from the data-url attribute
+        // Open in a new tab (mobile-safe: noopener prevents opener access)
+        window.open(url, '_blank', 'noopener,noreferrer');
+        // Wait 300 ms between opens to avoid popup blocking on mobile
+        await new Promise(resolve => setTimeout(resolve, 300));
+    }
+});
+
+// ── Service worker registration (Component 3 — placeholder) ────────────────
+// Full SW registration code is added in Step 4 (PWA component).
+</script>
+</body>
+</html>

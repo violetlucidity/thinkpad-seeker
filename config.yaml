@@ -42,3 +42,12 @@ push:
     user_key: "your_pushover_user_key"
   ntfy:
     url: "https://ntfy.sh/your_topic"
+
+# APScheduler cron schedule for automatic scrapes (Component 1)
+# days: any combination of mon,tue,wed,thu,fri,sat,sun
+# hour/minute: 24-hour local time in the timezone specified
+schedule:
+  days: "tue,fri"
+  hour: 8
+  minute: 0
+  timezone: "America/New_York"
