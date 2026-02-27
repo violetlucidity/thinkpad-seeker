@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThinkPad Auction Resources</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      padding: 2rem 1rem;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      color: #666;
+      margin-bottom: 2rem;
+    }
+
+    h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #555;
+      margin: 2rem 0 0.75rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid #ddd;
+    }
+
+    ul.resource-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    ul.resource-list li a {
+      display: block;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      text-decoration: none;
+      color: #1a56cc;
+      font-size: 0.95rem;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    ul.resource-list li a:hover {
+      background: #f0f4ff;
+      border-color: #1a56cc;
+    }
+
+    ul.resource-list li a .label {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 0.2rem;
+    }
+
+    ul.resource-list li a .url {
+      font-size: 0.78rem;
+      color: #888;
+      word-break: break-all;
+    }
+
+    .tag-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.5rem;
+    }
+
+    .tag {
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 0.3rem 0.6rem;
+      font-size: 0.85rem;
+      font-family: monospace;
+      color: #333;
+    }
+
+    .price-note {
+      font-size: 0.85rem;
+      color: #666;
+      margin-top: 0.5rem;
+    }
+
+    footer {
+      margin-top: 3rem;
+      font-size: 0.8rem;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>ThinkPad Auction Resources</h1>
+  <p class="subtitle">Static reference page &mdash; open these links manually until the tracker is running.</p>
+
+  <!-- ── Scraped / tracked sources ───────────────────────── -->
+  <h2>Tracked Sources (GovDeals)</h2>
+  <ul class="resource-list">
+    <li>
+      <a href="https://www.govdeals.com/index.cfm?fa=Main.AdvSearch&searchType=0&category=Computers+%26+Electronics&keywords=thinkpad&state=ME"
+         target="_blank" rel="noopener">
+        <span class="label">GovDeals &mdash; Maine (ThinkPad)</span>
+        <span class="url">govdeals.com &middot; state=ME &middot; category: Computers &amp; Electronics</span>
+      </a>
+    </li>
+    <li>
+      <a href="https://www.govdeals.com/index.cfm?fa=Main.AdvSearch&searchType=0&category=Computers+%26+Electronics&keywords=thinkpad&state=MA"
+         target="_blank" rel="noopener">
+        <span class="label">GovDeals &mdash; Massachusetts (ThinkPad)</span>
+        <span class="url">govdeals.com &middot; state=MA &middot; category: Computers &amp; Electronics</span>
+      </a>
+    </li>
+  </ul>
+
+  <!-- ── Manual browse sources ───────────────────────────── -->
+  <h2>Manual Browse Sources</h2>
+  <ul class="resource-list">
+    <li>
+      <a href="https://municibid.com/Browse/R3777816/Maine?ViewStyle=list&StatusFilter=active_only"
+         target="_blank" rel="noopener">
+        <span class="label">Municibid &mdash; Maine (active listings)</span>
+        <span class="url">municibid.com/Browse/R3777816/Maine?ViewStyle=list&amp;StatusFilter=active_only</span>
+      </a>
+    </li>
+    <li>
+      <a href="https://newhampshire.hibid.com/lots/computers---consumer-electronics---computers---laptops"
+         target="_blank" rel="noopener">
+        <span class="label">HiBid &mdash; New Hampshire &middot; Laptops</span>
+        <span class="url">newhampshire.hibid.com/lots/computers---consumer-electronics---computers---laptops</span>
+      </a>
+    </li>
+  </ul>
+
+  <!-- ── Model filter reference ──────────────────────────── -->
+  <h2>Model Filter Tokens</h2>
+  <div class="tag-grid">
+    <span class="tag">X220</span>
+    <span class="tag">X220T</span>
+    <span class="tag">X230</span>
+    <span class="tag">X230T</span>
+    <span class="tag">T420</span>
+    <span class="tag">T420S</span>
+    <span class="tag">T430</span>
+    <span class="tag">T430S</span>
+    <span class="tag">T520</span>
+    <span class="tag">T530</span>
+    <span class="tag">W520</span>
+    <span class="tag">W530</span>
+    <span class="tag">T440P</span>
+    <span class="tag">W540</span>
+    <span class="tag">W541</span>
+  </div>
+  <p class="price-note">Price filter: $0 &ndash; $500 &nbsp;&middot;&nbsp; Requires &ldquo;lenovo&rdquo; or &ldquo;thinkpad&rdquo; in title.</p>
+
+  <footer>Generated from <code>claude-thinkpad-auction.md</code> &amp; <code>config.yaml</code> &mdash; no server required.</footer>
+
+</body>
+</html>
