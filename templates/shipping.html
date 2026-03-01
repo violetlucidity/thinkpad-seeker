@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shipping Scanner — ThinkPad Seeker</title>
+  <style>
+    /* ── Base layout ────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 1rem;
+      background: #f5f5f5;
+      color: #222;
+    }
+
+    .container {
+      max-width: 960px;    /* wider than the main page to fit the table */
+      margin: 0 auto;
+    }
+
+    /* ── Header bar ─────────────────────────────────────────────────── */
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    h1 {
+      font-size: 1.3rem;
+      margin: 0;
+      color: #333;
+    }
+
+    .back-link {
+      font-size: 0.85rem;
+      color: #2a7ae2;
+      text-decoration: none;
+      margin-right: auto;   /* push everything else to the right */
+    }
+    .back-link:hover { text-decoration: underline; }
+
+    button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    #scan-btn      { background: #2a7ae2; color: #fff; }
+    #scan-btn:disabled { background: #aaa; cursor: not-allowed; }
+    #open-selected-btn { background: #27ae60; color: #fff; }
+
+    /* ── Progress bar ───────────────────────────────────────────────── */
+    #progress-wrap {
+      display: none;           /* shown only while scan is running */
+      margin-bottom: 1rem;
+    }
+
+    progress {
+      width: 100%;
+      height: 0.5rem;
+      border-radius: 4px;
+      appearance: none;
+      background: #e0e0e0;
+    }
+    progress::-webkit-progress-bar   { background: #e0e0e0; border-radius: 4px; }
+    progress::-webkit-progress-value { background: #2a7ae2; border-radius: 4px; }
+
+    #progress-label {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 0.25rem;
+    }
+
+    /* ── Status / error message ─────────────────────────────────────── */
+    #status-msg {
+      font-size: 0.85rem;
+      color: #666;
+      margin-bottom: 0.75rem;
+      min-height: 1.2em;
+    }
+    #status-msg.error { color: #c0392b; }
+
+    /* ── Results table ──────────────────────────────────────────────── */
+    .table-wrap {
+      overflow-x: auto;        /* horizontal scroll on narrow screens */
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      font-size: 0.88rem;
+    }
+
+    th {
+      background: #f0f0f0;
+      font-weight: 600;
+      text-align: left;
+      padding: 0.5rem 0.75rem;
+      white-space: nowrap;
+      cursor: pointer;         /* column headers are clickable to sort */
+      user-select: none;
+    }
+    th:hover { background: #e4e4e4; }
+    th.sorted-asc::after  { content: ' ▲'; font-size: 0.7em; }
+    th.sorted-desc::after { content: ' ▼'; font-size: 0.7em; }
+
+    td {
+      padding: 0.45rem 0.75rem;
+      vertical-align: top;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    /* Checkbox column */
+    td.col-check { width: 2rem; text-align: center; }
+    td.col-check input { width: 1.1rem; height: 1.1rem; cursor: pointer; }
+
+    /* Title column: linked listing name */
+    .listing-link {
+      color: #2a7ae2;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .listing-link:hover { text-decoration: underline; }
+
+    /* Price column */
+    td.col-price { white-space: nowrap; }
+
+    /* Ships badge column */
+    td.col-ships { white-space: nowrap; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 3px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-ships   { background: #d4edda; color: #155724; }  /* green */
+    .badge-no_ship { background: #f8d7da; color: #721c24; }  /* red   */
+    .badge-unknown { background: #e9ecef; color: #555;    }  /* grey  */
+
+    /* Highlight rows by shipping status */
+    tr.row-ships   { background: #f6fff8; }   /* very light green */
+    tr.row-no_ship { background: #fff6f6; }   /* very light red   */
+
+    /* Evidence column: the matched phrase */
+    .evidence {
+      font-size: 0.78rem;
+      color: #888;
+      font-style: italic;
+    }
+
+    /* Empty state */
+    .empty {
+      text-align: center;
+      padding: 2.5rem;
+      color: #aaa;
+    }
+
+    /* ── Summary counts ─────────────────────────────────────────────── */
+    .summary {
+      font-size: 0.85rem;
+      color: #555;
+      margin-bottom: 0.6rem;
+    }
+    .summary .cnt-ships   { color: #155724; font-weight: 600; }
+    .summary .cnt-no_ship { color: #721c24; font-weight: 600; }
+    .summary .cnt-unknown { color: #555;    font-weight: 600; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ── Header ──────────────────────────────────────────────────────── -->
+  <div class="header">
+    <a class="back-link" href="/">&#8592; Back to listings</a>
+    <h1>Shipping Scanner</h1>
+    <button id="open-selected-btn">Open Selected</button>
+    <button id="scan-btn">Scan Now</button>
+  </div>
+
+  <!-- ── Progress bar (visible while scan runs) ──────────────────────── -->
+  <div id="progress-wrap">
+    <progress id="progress-bar" value="0" max="100"></progress>
+    <div id="progress-label">Starting scan…</div>
+  </div>
+
+  <!-- ── Status / error message ──────────────────────────────────────── -->
+  <div id="status-msg">
+    {% if scan.finished %}
+      Last scan: {{ scan.finished[:19] }} UTC &nbsp;·&nbsp; {{ results|length }} listing(s) classified.
+    {% elif not results %}
+      No scan results yet. Click <strong>Scan Now</strong> to search GovDeals nationally.
+    {% endif %}
+  </div>
+
+  <!-- ── Results table ───────────────────────────────────────────────── -->
+  {% if results %}
+  <!-- Summary counts -->
+  {% set n_ships   = results | selectattr('ships', 'eq', 'ships')   | list | length %}
+  {% set n_no_ship = results | selectattr('ships', 'eq', 'no_ship') | list | length %}
+  {% set n_unknown = results | selectattr('ships', 'eq', 'unknown') | list | length %}
+  <div class="summary">
+    <span class="cnt-ships">&#10003; {{ n_ships }} ship</span>
+    &nbsp;&nbsp;
+    <span class="cnt-no_ship">&#10007; {{ n_no_ship }} pickup only</span>
+    &nbsp;&nbsp;
+    <span class="cnt-unknown">? {{ n_unknown }} unknown</span>
+  </div>
+
+  <div class="table-wrap">
+  <table id="results-table">
+    <thead>
+      <tr>
+        <th class="col-check"><input type="checkbox" id="select-all-chk" title="Select all"></th>
+        <th data-col="title">Title</th>
+        <th data-col="price">Price</th>
+        <th data-col="location">Location</th>
+        <th data-col="ships">Ships?</th>
+        <th data-col="evidence">Evidence</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr class="row-{{ r.ships }}">
+        <!-- Checkbox with data-url for the Open Selected button -->
+        <td class="col-check">
+          <input
+            type="checkbox"
+            class="listing-checkbox"
+            data-url="{{ r.url }}"
+          >
+        </td>
+        <!-- Listing title linked to the GovDeals listing page -->
+        <td>
+          <a class="listing-link" href="{{ r.url }}" target="_blank" rel="noopener noreferrer">
+            {{ r.title }}
+          </a>
+        </td>
+        <!-- Price formatted to two decimal places -->
+        <td class="col-price">${{ "%.0f"|format(r.price) }}</td>
+        <!-- Location as reported in the search results -->
+        <td>{{ r.location }}</td>
+        <!-- Color-coded shipping status badge -->
+        <td class="col-ships">
+          {% if r.ships == 'ships' %}
+            <span class="badge badge-ships">Ships</span>
+          {% elif r.ships == 'no_ship' %}
+            <span class="badge badge-no_ship">Pickup only</span>
+          {% else %}
+            <span class="badge badge-unknown">Unknown</span>
+          {% endif %}
+        </td>
+        <!-- The keyword phrase that triggered the classification -->
+        <td class="evidence">
+          {% if r.evidence %}"{{ r.evidence }}"{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div><!-- .table-wrap -->
+
+  {% else %}
+  <div class="empty">
+    No results yet. Click <strong>Scan Now</strong> to search GovDeals nationally for ThinkPad listings.
+  </div>
+  {% endif %}
+
+</div><!-- .container -->
+
+<script>
+// ── Scan Now button ─────────────────────────────────────────────────────────
+// POSTs to /api/scan/start, then polls /api/scan/status until the scan finishes.
+const scanBtn      = document.getElementById('scan-btn');
+const progressWrap = document.getElementById('progress-wrap');
+const progressBar  = document.getElementById('progress-bar');
+const progressLbl  = document.getElementById('progress-label');
+const statusMsg    = document.getElementById('status-msg');
+
+let pollTimer = null;   // setInterval handle for the status poller
+
+// Start polling immediately if a scan was already running when the page loaded
+{% if scan.running %}
+startPolling();
+scanBtn.disabled = true;
+scanBtn.textContent = 'Scanning…';
+progressWrap.style.display = 'block';
+{% endif %}
+
+scanBtn.addEventListener('click', async () => {
+    scanBtn.disabled = true;
+    scanBtn.textContent = 'Scanning…';
+    statusMsg.textContent = 'Starting scan…';
+    statusMsg.classList.remove('error');
+    progressWrap.style.display = 'block';    // show the progress bar
+    progressBar.value = 0;
+
+    try {
+        const resp = await fetch('/api/scan/start', { method: 'POST' });
+        const data = await resp.json();
+
+        if (data.status === 'already_running') {
+            statusMsg.textContent = 'A scan is already running.';
+        }
+        startPolling();    // begin polling for progress regardless
+    } catch (err) {
+        statusMsg.textContent = `Failed to start scan: ${err}`;
+        statusMsg.classList.add('error');
+        scanBtn.disabled = false;
+        scanBtn.textContent = 'Scan Now';
+        progressWrap.style.display = 'none';
+    }
+});
+
+// Poll /api/scan/status every 2 seconds and update the progress bar
+function startPolling() {
+    if (pollTimer) return;   // avoid double-polling
+    pollTimer = setInterval(async () => {
+        try {
+            const resp = await fetch('/api/scan/status');
+            const data = await resp.json();
+
+            // Update the progress bar with the current done/total counts
+            const pct = data.total > 0
+                ? Math.round((data.done / data.total) * 100)
+                : 0;
+            progressBar.value = pct;
+            progressLbl.textContent =
+                data.total > 0
+                    ? `${data.done} / ${data.total} listings processed (${pct}%)`
+                    : 'Fetching search results…';
+
+            if (!data.running) {
+                // Scan finished — stop polling and reload the page to show results
+                clearInterval(pollTimer);
+                pollTimer = null;
+                if (data.error) {
+                    statusMsg.textContent = `Scan error: ${data.error}`;
+                    statusMsg.classList.add('error');
+                    scanBtn.disabled = false;
+                    scanBtn.textContent = 'Scan Now';
+                    progressWrap.style.display = 'none';
+                } else {
+                    statusMsg.textContent = `Done. Loading ${data.count} results…`;
+                    setTimeout(() => location.reload(), 600);   // short pause then reload
+                }
+            }
+        } catch (err) {
+            // Network blip — don't stop polling, just log
+            console.warn('Status poll failed:', err);
+        }
+    }, 2000);   // poll every 2 seconds
+}
+
+// ── Select all checkbox ─────────────────────────────────────────────────────
+// The header checkbox toggles all listing checkboxes in the table body.
+const selectAllChk = document.getElementById('select-all-chk');
+if (selectAllChk) {
+    selectAllChk.addEventListener('change', () => {
+        // Propagate the checked state to every listing checkbox on the page
+        document.querySelectorAll('.listing-checkbox').forEach(cb => {
+            cb.checked = selectAllChk.checked;
+        });
+    });
+}
+
+// ── Open Selected button ────────────────────────────────────────────────────
+// Same sequential-open-with-delay pattern as the main listing page (Component 6).
+document.getElementById('open-selected-btn').addEventListener('click', async () => {
+    const checked = document.querySelectorAll('.listing-checkbox:checked');
+    if (checked.length === 0) {
+        alert('Please check at least one listing first.');
+        return;
+    }
+
+    // Warn if more than 5 are selected to prevent accidental tab floods
+    if (checked.length > 5) {
+        const ok = confirm(`Open ${checked.length} listings? This will open ${checked.length} tabs.`);
+        if (!ok) return;
+    }
+
+    for (const cb of checked) {
+        window.open(cb.dataset.url, '_blank', 'noopener,noreferrer');  // open the listing URL
+        await new Promise(r => setTimeout(r, 300));   // 300 ms gap to avoid popup blocking
+    }
+});
+
+// ── Column sort ─────────────────────────────────────────────────────────────
+// Click any column header to sort the table by that column.
+const table = document.getElementById('results-table');
+if (table) {
+    let lastCol = null;      // tracks which column was sorted last
+    let ascending = true;    // tracks the current sort direction
+
+    // Order used for the 'ships' column: ships first, unknown second, no_ship last
+    const shipOrder = { ships: 0, unknown: 1, no_ship: 2 };
+
+    table.querySelectorAll('th[data-col]').forEach(th => {
+        th.addEventListener('click', () => {
+            const col = th.dataset.col;   // column key name
+
+            // Flip direction if clicking the same column again
+            ascending = (lastCol === col) ? !ascending : true;
+            lastCol = col;
+
+            // Clear sort indicators from all headers
+            table.querySelectorAll('th').forEach(h => {
+                h.classList.remove('sorted-asc', 'sorted-desc');
+            });
+            // Apply indicator to the clicked header
+            th.classList.add(ascending ? 'sorted-asc' : 'sorted-desc');
+
+            // Sort the <tbody> rows in place
+            const tbody = table.tBodies[0];
+            const rows = Array.from(tbody.rows);   // snapshot into an array
+
+            rows.sort((a, b) => {
+                // Read the cell value for the sort column from each row
+                const cellIndex = th.cellIndex;
+                const av = a.cells[cellIndex].textContent.trim();
+                const bv = b.cells[cellIndex].textContent.trim();
+
+                let cmp;
+                if (col === 'price') {
+                    // Numeric sort: strip $ and parse as float
+                    cmp = parseFloat(av.replace('$', '') || 0) -
+                          parseFloat(bv.replace('$', '') || 0);
+                } else if (col === 'ships') {
+                    // Custom order: Ships → Unknown → Pickup only
+                    const aTag = a.querySelector('.badge')?.className.replace('badge badge-', '') || 'unknown';
+                    const bTag = b.querySelector('.badge')?.className.replace('badge badge-', '') || 'unknown';
+                    cmp = (shipOrder[aTag] ?? 1) - (shipOrder[bTag] ?? 1);
+                } else {
+                    // Alphabetical sort for text columns
+                    cmp = av.localeCompare(bv);
+                }
+                return ascending ? cmp : -cmp;   // reverse if descending
+            });
+
+            // Re-insert rows in the sorted order
+            rows.forEach(row => tbody.appendChild(row));
+        });
+    });
+}
+</script>
+</body>
+</html>

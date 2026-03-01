@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Viewport tag ensures the page scales correctly on phone screens -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ThinkPad Seeker</title>
+  <!-- PWA manifest link (Component 3) -->
+  <link rel="manifest" href="/static/manifest.json">
+  <!-- Theme color for Android Chrome address bar (Component 3) -->
+  <meta name="theme-color" content="#333333">
+  <style>
+    /* ── Base / mobile-first layout ─────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      margin: 0;
+      padding: 1rem;
+      background: #f5f5f5;
+      color: #222;
+    }
+
+    /* Central content column — readable on both phone and desktop */
+    .container {
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 0.5rem;
+      color: #333;
+    }
+
+    /* ── Toolbar ─────────────────────────────────────────────────────── */
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;       /* wraps to a second row on narrow screens */
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      align-items: center;
+    }
+
+    button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+
+    /* Primary action buttons */
+    #run-scrape-btn  { background: #2a7ae2; color: #fff; }
+    #open-selected-btn { background: #27ae60; color: #fff; }
+    /* Toggle and status text */
+    #select-all-btn  { background: #eee; color: #333; }
+    #scrape-status   { font-size: 0.85rem; color: #666; margin-left: auto; }
+
+    /* ── Listing cards ───────────────────────────────────────────────── */
+    .listing-card {
+      background: #fff;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    /* Checkbox column — large tap target for phone use */
+    .listing-card input[type="checkbox"] {
+      width: 1.25rem;
+      height: 1.25rem;
+      margin-top: 0.2rem;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .listing-info { flex: 1; min-width: 0; }
+
+    /* Listing title links */
+    .listing-title {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: #2a7ae2;
+      text-decoration: none;
+      word-break: break-word;
+    }
+    .listing-title:hover { text-decoration: underline; }
+
+    /* Meta line: price · location · end time */
+    .listing-meta {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 0.2rem;
+    }
+
+    /* Badge showing matched model tokens */
+    .listing-models {
+      font-size: 0.75rem;
+      background: #e8f0fe;
+      color: #2a7ae2;
+      border-radius: 3px;
+      padding: 1px 5px;
+      display: inline-block;
+      margin-top: 0.2rem;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem;
+      color: #999;
+    }
+
+    /* ── Bookmark button ─────────────────────────────────────────────── */
+    .bookmark-btn {
+      background: none;        /* no background — just the star glyph */
+      border: none;
+      font-size: 1.2rem;
+      line-height: 1;
+      padding: 0.1rem 0.2rem;
+      cursor: pointer;
+      color: #ccc;             /* unfilled star is grey */
+      flex-shrink: 0;
+      transition: color 0.15s, transform 0.1s;
+    }
+    /* Filled star turns amber */
+    .bookmark-btn.active { color: #f5a623; }
+    /* Brief pop animation when toggled */
+    .bookmark-btn:active { transform: scale(1.3); }
+
+    /* ── Bookmarks section ───────────────────────────────────────────── */
+    .bookmarks-section {
+      margin-bottom: 1.5rem;
+    }
+    .bookmarks-section h2 {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #888;
+      margin: 0 0 0.5rem;
+    }
+    /* Bookmarked cards get a subtle amber left border to distinguish them */
+    .bookmarks-section .listing-card {
+      border-left: 3px solid #f5a623;
+    }
+
+    /* Divider between bookmarks and the main list */
+    .section-divider {
+      border: none;
+      border-top: 1px solid #e0e0e0;
+      margin: 1rem 0 1rem;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>ThinkPad Seeker</h1>
+
+  <!-- ── Toolbar ───────────────────────────────────────────────────────── -->
+  <div class="toolbar">
+    <!-- Run Scrape Now: POSTs to /run-scrape, refreshes the page on success -->
+    <button id="run-scrape-btn">Run Scrape Now</button>
+
+    <!-- Select All / Deselect All toggle — required by Component 6 -->
+    <button id="select-all-btn">Select All</button>
+
+    <!-- Open Selected: opens checked listing URLs in the browser (Component 6) -->
+    <button id="open-selected-btn">Open Selected</button>
+
+    <!-- Shipping Scanner: navigates to the national GovDeals shipping scan page -->
+    <a href="/shipping" style="
+      padding: 0.5rem 1rem;
+      background: #6f42c1;
+      color: #fff;
+      border-radius: 4px;
+      text-decoration: none;
+      font-size: 0.9rem;
+    ">Shipping Scanner</a>
+
+    <!-- Status text updated by JavaScript after a scrape run -->
+    <span id="scrape-status"></span>
+  </div>
+
+  {# ── Reusable listing card macro — defined first, called below ───────── #}
+  {% macro listing_card(listing, idx, prefix='') %}
+  <div class="listing-card">
+    <!--
+      listing-checkbox class and data-url attribute are required by Component 6.
+      The "Open Selected" button reads data-url to know which URL to open.
+    -->
+    <input
+      type="checkbox"
+      class="listing-checkbox"
+      data-url="{{ listing.url }}"
+      id="chk-{{ prefix }}-{{ idx }}"
+    >
+    <div class="listing-info">
+      <a
+        class="listing-title"
+        href="{{ listing.url }}"
+        target="_blank"
+        rel="noopener noreferrer"
+      >{{ listing.title }}</a>
+      <div class="listing-meta">
+        ${{ "%.2f"|format(listing.price) }}
+        &nbsp;·&nbsp; {{ listing.location }}
+        {% if listing.end_time %}
+          &nbsp;·&nbsp; ends {{ listing.end_time }}
+        {% endif %}
+        &nbsp;·&nbsp; first seen {{ listing.first_seen[:10] }}
+      </div>
+      {% if listing.matched_models %}
+        <span class="listing-models">{{ listing.matched_models }}</span>
+      {% endif %}
+    </div>
+    <!-- Bookmark star button: filled (★) when bookmarked, outline (☆) otherwise -->
+    <button
+      class="bookmark-btn {% if listing.bookmarked %}active{% endif %}"
+      data-id="{{ listing.id }}"
+      data-bookmarked="{{ '1' if listing.bookmarked else '0' }}"
+      title="{% if listing.bookmarked %}Remove bookmark{% else %}Bookmark this listing{% endif %}"
+      aria-label="{% if listing.bookmarked %}Remove bookmark{% else %}Bookmark{% endif %}"
+    >{% if listing.bookmarked %}&#9733;{% else %}&#9734;{% endif %}</button>
+  </div>
+  {% endmacro %}
+
+  <!-- ── Bookmarks section (pinned at top) ────────────────────────────── -->
+  {% if bookmarked %}
+  <section class="bookmarks-section">
+    <h2>&#9733; Bookmarks</h2>
+    {% for listing in bookmarked %}
+    {{ listing_card(listing, loop.index, prefix='bk') }}
+    {% endfor %}
+  </section>
+  <hr class="section-divider">
+  {% endif %}
+
+  <!-- ── Full listing checklist ────────────────────────────────────────── -->
+  {% if listings %}
+    {% for listing in listings %}
+    {{ listing_card(listing, loop.index, prefix='ls') }}
+    {% endfor %}
+  {% elif not bookmarked %}
+    <div class="empty-state">
+      No listings yet. Click <strong>Run Scrape Now</strong> to fetch the latest.
+    </div>
+  {% endif %}
+</div>
+
+<script>
+// ── Run Scrape Now ──────────────────────────────────────────────────────────
+// POSTs to /run-scrape, shows status, then reloads the page to show new rows.
+document.getElementById('run-scrape-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('run-scrape-btn');
+    const status = document.getElementById('scrape-status');
+
+    // Disable the button while the scrape is running to prevent double-clicks
+    btn.disabled = true;
+    btn.textContent = 'Scraping…';
+    status.textContent = '';
+
+    try {
+        // POST to the Flask endpoint; no body needed
+        const resp = await fetch('/run-scrape', { method: 'POST' });
+        const data = await resp.json();
+
+        if (data.status === 'ok') {
+            // Show a short summary then reload so the listing list refreshes
+            status.textContent = `Done: ${data.new} new, ${data.updated} updated.`;
+            setTimeout(() => location.reload(), 1500);   // reload after 1.5 s
+        } else {
+            status.textContent = `Error: ${data.message}`;
+            btn.disabled = false;
+            btn.textContent = 'Run Scrape Now';
+        }
+    } catch (err) {
+        // Network or server error
+        status.textContent = `Request failed: ${err}`;
+        btn.disabled = false;
+        btn.textContent = 'Run Scrape Now';
+    }
+});
+
+// ── Select All / Deselect All toggle ───────────────────────────────────────
+// Clicks once to check all listing checkboxes; clicks again to uncheck them.
+let allSelected = false;
+document.getElementById('select-all-btn').addEventListener('click', () => {
+    allSelected = !allSelected;   // flip the toggle state
+    // Apply the new checked state to every listing checkbox on the page
+    document.querySelectorAll('.listing-checkbox').forEach(cb => {
+        cb.checked = allSelected;
+    });
+    // Update button label to reflect the next action
+    document.getElementById('select-all-btn').textContent =
+        allSelected ? 'Deselect All' : 'Select All';
+});
+
+// ── Open Selected button (Component 6) ────────────────────────────────────
+// Opens all checked listing URLs in the mobile browser, one after another.
+// A short delay between opens prevents the browser from treating them as a popup burst.
+document.getElementById('open-selected-btn').addEventListener('click', async () => {
+    // Gather all checked checkboxes
+    const checked = document.querySelectorAll('.listing-checkbox:checked');
+    if (checked.length === 0) {
+        alert('Please check at least one listing first.');
+        return;
+    }
+
+    // Confirm if more than 5 items are selected (prevents accidental tab floods)
+    if (checked.length > 5) {
+        const confirmed = confirm(
+            `Open ${checked.length} listings? This will open ${checked.length} tabs.`
+        );
+        if (!confirmed) return;
+    }
+
+    for (const checkbox of checked) {
+        const url = checkbox.dataset.url;  // read the URL from the data-url attribute
+        // Open in a new tab (mobile-safe: noopener prevents opener access)
+        window.open(url, '_blank', 'noopener,noreferrer');
+        // Wait 300 ms between opens to avoid popup blocking on mobile
+        await new Promise(resolve => setTimeout(resolve, 300));
+    }
+});
+
+// ── Bookmark toggle ────────────────────────────────────────────────────────
+// Sends a POST to /bookmark with the listing id and desired state.
+// Updates the star icon immediately (optimistic UI) then reloads to refresh
+// the bookmarks section at the top.
+async function toggleBookmark(btn) {
+    const id = btn.dataset.id;                         // stable listing id
+    const newState = btn.dataset.bookmarked !== '1';   // flip the current state
+
+    // Optimistic UI: swap the star immediately so the user gets instant feedback
+    btn.textContent = newState ? '\u2605' : '\u2606';  // ★ or ☆
+    btn.classList.toggle('active', newState);           // amber or grey
+    btn.dataset.bookmarked = newState ? '1' : '0';     // update the attribute
+
+    try {
+        const resp = await fetch('/bookmark', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, bookmarked: newState })  // send id + new state
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        // Reload after a brief pause so the bookmarks section at the top updates
+        setTimeout(() => location.reload(), 400);
+    } catch (err) {
+        // Revert the optimistic update if the request failed
+        btn.textContent = newState ? '\u2606' : '\u2605';
+        btn.classList.toggle('active', !newState);
+        btn.dataset.bookmarked = newState ? '0' : '1';
+        console.error('Bookmark toggle failed:', err);
+    }
+}
+
+// Attach click listeners to every bookmark button rendered on the page
+document.querySelectorAll('.bookmark-btn').forEach(btn => {
+    btn.addEventListener('click', () => toggleBookmark(btn));
+});
+
+// ── Push subscription helpers (Component 4) ───────────────────────────────
+
+// Request push notification permission and subscribe to the server.
+// Called automatically after service worker registration succeeds.
+async function requestPushPermission(registration) {
+    // Ask the user for notification permission (shows the browser prompt)
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+        console.warn('Push notification permission denied.');
+        return;                            // user declined — skip subscription
+    }
+
+    // Fetch the server's VAPID public key so we can subscribe with it
+    const resp = await fetch('/vapid-public-key');
+    const { publicKey } = await resp.json();
+
+    // Convert the VAPID public key from hex string to the Uint8Array format
+    // required by the browser's pushManager.subscribe() call
+    const convertedKey = hexStringToUint8Array(publicKey);
+
+    // Subscribe to push notifications using the server's public key
+    const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,             // Android requires this to be true
+        applicationServerKey: convertedKey // identifies our server as the sender
+    });
+
+    // Send the subscription object to the Flask backend for storage
+    await fetch('/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subscription) // serialize the PushSubscription object
+    });
+}
+
+// Helper: convert a hex string to a Uint8Array for VAPID key handling.
+// The browser's Web Push API expects applicationServerKey as a Uint8Array.
+function hexStringToUint8Array(hexString) {
+    const bytes = new Uint8Array(hexString.length / 2);  // two hex chars per byte
+    for (let i = 0; i < bytes.length; i++) {
+        // Parse each pair of hex characters as a decimal byte value
+        bytes[i] = parseInt(hexString.substr(i * 2, 2), 16);
+    }
+    return bytes;
+}
+
+// ── Service worker registration (Component 3) ─────────────────────────────
+// Register the service worker for push notification support.
+// Only runs in browsers that support service workers (Chrome, Firefox, Edge).
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', async () => {
+        try {
+            // Register sw.js from the /static path served by Flask
+            const registration = await navigator.serviceWorker.register('/static/sw.js');
+            console.log('Service worker registered:', registration.scope);
+            // After registration, request push permission from the user (Component 4)
+            await requestPushPermission(registration);
+        } catch (err) {
+            // Log registration errors; don't throw — the page still works without SW
+            console.error('Service worker registration failed:', err);
+        }
+    });
+}
+</script>
+</body>
+</html>

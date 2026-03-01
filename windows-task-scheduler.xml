@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <!-- Trigger: run at logon for any user -->
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Actions Context="LocalService">
+    <Exec>
+      <!-- MANUAL STEP: Replace the path below with the actual path to pythonw.exe
+           and the actual path to run.py on the user's machine.
+           Use pythonw.exe (not python.exe) to run without a visible terminal window.
+           Example: C:\Users\YourName\AppData\Local\Programs\Python\Python312\pythonw.exe -->
+      <Command>pythonw.exe</Command>
+      <!-- MANUAL STEP: Replace with the full path to run.py -->
+      <Arguments>C:\path\to\your\project\run.py</Arguments>
+      <WorkingDirectory>C:\path\to\your\project</WorkingDirectory>
+    </Exec>
+  </Actions>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <!-- Do not start the task if the computer is on battery power -->
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <!-- Restart the task if it fails, up to 3 times, waiting 1 minute between attempts -->
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+  </Settings>
+</Task>

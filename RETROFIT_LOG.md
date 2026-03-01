@@ -1,0 +1,208 @@
+# RETROFIT LOG — ThinkPad Seeker
+# SAR Notifications Infrastructure Retrofit
+# Tracking all changes made during the notifications retrofit.
+
+---
+
+## STEP 1 — Audit Results (pre-retrofit baseline)
+
+**Date audited:** 2026-02-26
+
+### Entry point
+| Item | Finding |
+|------|---------|
+| Main entry point file | `tracker.py` (CLI tool — **no Flask app exists yet**) |
+| Scrape orchestration function | `run_cycle(config, email_enabled, push_enabled)` in `tracker.py` |
+| Flask app variable | **NONE** — no Flask application exists in the project |
+| Main HTML template | **NONE** — no `templates/` directory exists |
+| Main JS file / `<script>` block | **NONE** — no JavaScript files exist |
+
+### Configuration and dependencies
+| Item | Finding |
+|------|---------|
+| `requirements.txt` | EXISTS at repo root — contains 3 packages: `requests`, `PyYAML`, `beautifulsoup4` |
+| `config.yaml` | EXISTS at repo root — project's runtime config (YAML format, not JSON) |
+| `config.json` | **DOES NOT EXIST** |
+| `config.json.example` | **DOES NOT EXIST** |
+| APScheduler | **NOT present** in requirements.txt or any source file |
+| `.gitignore` | **DOES NOT EXIST** |
+
+### Existing Python files
+- `tracker.py` — main CLI: load_config, fetch_govdeals_listings, filter_listings,
+  upsert_listings, send_email, send_push, run_cycle, main
+- `browser_opener.py` — opens Municibid/HiBid tabs in default browser, no scraping
+
+### Retrofit implications
+Because no Flask app, HTML template, or JavaScript exists, the retrofit will:
+1. Create `run.py` as the new Flask application entry point.
+2. Import existing functions from `tracker.py` unchanged.
+3. Create `templates/index.html` with the listing review UI.
+4. Create `static/` directory for PWA assets.
+5. The existing `tracker.py` CLI remains fully functional.
+6. Project uses `config.yaml` (not JSON); `config.json.example` will be created
+   per spec, and runtime config reads will use `config.yaml` via PyYAML.
+
+---
+
+## STEP 2 — APScheduler (Component 1)
+
+### Files created
+- `run.py` — new Flask application entry point; contains the `app` Flask variable,
+  APScheduler initialization, `run_scrape()` wrapper, database helper, and stub
+  push-notification helpers. Imports `load_config` and `run_cycle` from `tracker.py`
+  without modifying that file.
+- `templates/index.html` — main Jinja2 template; listing checklist UI with
+  "Run Scrape Now", "Select All", and "Open Selected" buttons. All Component 6
+  markup and JavaScript included here for completeness.
+- `config.json.example` — standardized SAR config template with `schedule` block,
+  `vapid` block, and `tailscale_ip` placeholder, per spec.
+- `.gitignore` — created with entries for `jobs.sqlite`, `thinkpads.db`,
+  `config.json`, and `subscriptions.json`.
+
+### Files modified
+- `requirements.txt` — added `flask>=3.0.0`, `apscheduler>=3.10.0`,
+  `sqlalchemy>=2.0.0` (SQLAlchemy is required by APScheduler's SQLAlchemyJobStore).
+- `config.yaml` — added `schedule:` block (days: tue,fri, hour: 8, minute: 0,
+  timezone: America/New_York) per spec default values.
+
+### Adaptation note
+The project uses `config.yaml` (YAML) rather than `config.json` as its runtime
+config. `run.py` reads `config.yaml` via PyYAML. `config.json.example` is
+provided as required by the spec for documentation and portability purposes.
+
+## STEP 3 — Windows Task Scheduler XML (Component 2)
+
+### Files created
+- `windows-task-scheduler.xml` — importable Task Scheduler entry that launches
+  `run.py` via `pythonw.exe` at Windows logon. Contains inline XML comments
+  marking the two paths that need manual substitution.
+- `MANUAL STEPS.md` — new documentation file; initial content is the
+  TASK SCHEDULER SETUP section from the spec (6 numbered steps).
+
+## STEP 4 — PWA Manifest and Service Worker (Component 3)
+
+### Files created
+- `static/manifest.json` — PWA manifest; name: "ThinkPad Seeker",
+  short_name: "TP Seeker", theme/background colors, two icon entries.
+- `static/sw.js` — service worker handling `install`, `activate`, `push`, and
+  `notificationclick` events, verbatim from spec with project-name comment.
+- `static/icons/icon-192.png` — 192×192 placeholder icon (dark-blue background,
+  white "TS" initials), generated via Pillow.
+- `static/icons/icon-512.png` — 512×512 placeholder icon (same design).
+
+### Files modified
+- `templates/index.html` — added `<link rel="manifest">` and
+  `<meta name="theme-color">` to `<head>`; replaced SW placeholder comment
+  with the full `navigator.serviceWorker.register()` block from spec.
+- `requirements.txt` — added `Pillow>=10.0.0` (used to generate icons).
+
+## STEP 5 — Web Push Subscription Endpoint (Component 4)
+
+### Files created
+- `generate_vapid_keys.py` — one-time script that generates EC VAPID key pair
+  and prints hex values for pasting into config.yaml.
+
+### Files modified
+- `run.py` — added `from pywebpush import webpush, WebPushException` import;
+  added `/subscribe` POST route (stores subscription, deduplicates);
+  added `/vapid-public-key` GET route (returns public key for browser).
+  `load_subscriptions()` and `save_subscriptions()` were already present as
+  stubs from Step 2 and are now wired to the routes.
+- `templates/index.html` — added `requestPushPermission(registration)` and
+  `hexStringToUint8Array(hexString)` functions to the `<script>` block,
+  placed before the SW registration code that calls `requestPushPermission`.
+- `requirements.txt` — added `pywebpush>=2.0.0`.
+- `config.yaml` — added `vapid:` block with placeholder public/private key
+  values and claims sub email.
+
+### Already completed in earlier steps
+- `config.json` in `.gitignore` — done in Step 2
+- `subscriptions.json` in `.gitignore` — done in Step 2
+- `vapid` block in `config.json.example` — done in Step 2
+
+## STEP 6 — Push Notification on Scrape Completion (Component 5)
+
+### Files modified
+- `run.py`:
+  - Added `import sys` and the ntfy-monitor import block
+    (`sys.path.insert(0, '../ntfy-monitor')`, `import notify`, guarded with
+    `_NOTIFY_AVAILABLE` flag so the app still works if ntfy-monitor is absent).
+  - Replaced `send_push_notifications()` stub with the full pywebpush
+    implementation: builds JSON payload, iterates subscriptions, calls
+    `webpush()`, removes HTTP-410-expired subscriptions automatically.
+  - Wrapped `run_scrape()` in try/except:
+    - Happy path: `notify.success(f"{new_count} new listing(s) found.", project="ThinkPad Seeker")`
+    - CAPTCHA path: `notify.manual_step("Manual action required — check the scraper.", project="ThinkPad Seeker")`
+    - Error path: `notify.error(f"Scrape failed: {str(e)}", project="ThinkPad Seeker")`
+- `tracker.py`:
+  - Added `CaptchaDetectedError` exception class.
+  - Added CAPTCHA/login-wall detection in `fetch_govdeals_listings()`: checks
+    response text for "captcha", "please log in", "access denied" and raises
+    `CaptchaDetectedError` if any are found.
+  - `CaptchaDetectedError` is imported by `run.py` so it can be caught there.
+
+## STEP 7 — Open Selected Button (Component 6)
+
+### Verification results — all requirements already satisfied
+
+| Requirement | Status | Location in index.html |
+|---|---|---|
+| Button has `id="open-selected-btn"` | ✅ Correct | toolbar `<button>` element |
+| Each checkbox has `class="listing-checkbox"` | ✅ Correct | listing loop `<input>` |
+| Each checkbox has `data-url` attribute | ✅ Correct | listing loop `<input>` |
+| Sequential `window.open()` with 300ms delay | ✅ Correct | Open Selected `for` loop |
+| Confirmation for more than 5 items | ✅ Correct | `if (checked.length > 5)` guard |
+| "Select All / Deselect All" toggle above list | ✅ Correct | `#select-all-btn` + JS toggle |
+| `<meta name="viewport">` tag | ✅ Present | `<head>` |
+| `.container` uses `max-width: 700px` with `margin: 0 auto` | ✅ Present | CSS block |
+| `.toolbar` uses `flex-wrap: wrap` | ✅ Present | CSS block |
+| Oversized checkbox tap targets (1.25rem × 1.25rem) | ✅ Present | CSS block |
+
+### No changes required
+All Component 6 markup and JavaScript was correctly implemented in Step 2 when
+the Flask template was first created. Nothing was modified in this step.
+
+## STEP 8 — Notifications Manual Steps
+
+### Files modified
+- `MANUAL STEPS.md` — appended the full NOTIFICATIONS SETUP section from
+  SAR-notifications-pwa.md with "ThinkPad Seeker" substituted for the project
+  name placeholder and "config.yaml" used in place of "config.json" (this
+  project uses YAML config). Contains Steps 1–5 covering Tailscale, VAPID
+  key generation, push subscription, Windows auto-start, and smoke-test.
+
+## STEP 9 — Final Verification
+
+### All six SAR notification components confirmed present
+
+| Component | Status | Files modified |
+|---|---|---|
+| 1. APScheduler with misfire grace period | ✅ Complete | `run.py`, `requirements.txt`, `config.yaml`, `config.json.example`, `.gitignore` |
+| 2. Windows Task Scheduler auto-start XML | ✅ Complete | `windows-task-scheduler.xml`, `MANUAL STEPS.md` |
+| 3. PWA manifest and service worker | ✅ Complete | `static/manifest.json`, `static/sw.js`, `static/icons/icon-192.png`, `static/icons/icon-512.png`, `templates/index.html`, `requirements.txt` |
+| 4. Web Push subscription endpoint | ✅ Complete | `run.py`, `generate_vapid_keys.py`, `templates/index.html`, `requirements.txt`, `config.yaml`, `config.json.example`, `.gitignore` |
+| 5. Push notification on scrape completion | ✅ Complete | `run.py`, `tracker.py` |
+| 6. Mobile-first "Open Selected" behavior | ✅ Complete | `templates/index.html` (all requirements satisfied, no changes needed in Step 7) |
+
+### Existing functionality preserved
+- `tracker.py` CLI (`python tracker.py --once/--loop/--no-email/--no-push`)
+  remains fully functional — only non-breaking additions were made:
+  `CaptchaDetectedError` class and CAPTCHA detection in `fetch_govdeals_listings()`.
+- `browser_opener.py` is entirely unchanged.
+- `config.yaml` schema is backward-compatible; new keys (`schedule`, `vapid`)
+  use safe defaults if absent.
+
+### .gitignore entries confirmed
+- `jobs.sqlite` ✅
+- `thinkpads.db` ✅
+- `config.json` ✅
+- `subscriptions.json` ✅
+
+### Code comment coverage
+Every significant new line added across all steps has an inline comment
+explaining what the line does, per the SAR specification requirement.
+
+### RETROFIT_LOG.md coverage
+All nine steps documented (Steps 1–9).
+
+### Retrofit complete. All six components are present and verified.

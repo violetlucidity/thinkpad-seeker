@@ -1,0 +1,21 @@
+{
+  "_comment": "Copy this file to config.json and fill in your values. Do NOT commit config.json — it contains secrets.",
+
+  "_schedule_comment": "Set 'days' to any combination of mon,tue,wed,thu,fri,sat,sun. Hour uses 24-hour format in the timezone specified.",
+  "schedule": {
+    "days": "tue,fri",
+    "hour": 8,
+    "minute": 0,
+    "timezone": "America/New_York"
+  },
+
+  "_vapid_comment": "Run python generate_vapid_keys.py once and paste the output here.",
+  "vapid": {
+    "public_key": "REPLACE_WITH_OUTPUT_OF_generate_vapid_keys.py",
+    "private_key": "REPLACE_WITH_OUTPUT_OF_generate_vapid_keys.py",
+    "claims": {"sub": "mailto:your@email.com"}
+  },
+
+  "_tailscale_comment": "Your computer's Tailscale IP address (format: 100.x.x.x). Used for phone access.",
+  "tailscale_ip": "100.x.x.x"
+}
