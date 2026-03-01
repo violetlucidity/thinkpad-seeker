@@ -21,6 +21,9 @@ config.json
 # Push subscription store (Component 4) — device-specific, not versioned
 subscriptions.json
 
+# Shipping scanner cached results — local data, not versioned
+shipping_results.json
+
 # OS / editor noise
 .DS_Store
 Thumbs.db

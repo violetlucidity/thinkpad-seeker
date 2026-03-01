@@ -15,6 +15,7 @@ Then open http://localhost:5000 in your browser (or phone via Tailscale).
 import json                          # Standard JSON parsing for config and push payloads
 import sqlite3                       # Standard SQLite library for reading listings
 import sys                           # For inserting the ntfy-monitor path (Component 5)
+import threading                     # Background thread for the shipping scanner
 from datetime import datetime        # For timestamping scrape runs
 
 import yaml                          # PyYAML — reads the project's config.yaml
@@ -37,6 +38,9 @@ except ImportError:
 
 # Import existing scraper functions from tracker.py (unchanged)
 from tracker import load_config, run_cycle, CaptchaDetectedError
+
+# Import the shipping scanner module
+import shipping_scanner
 
 # ── Flask application ─────────────────────────────────────────────────────────
 
@@ -309,6 +313,111 @@ def trigger_scrape():
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ── Shipping scanner state and routes ─────────────────────────────────────────
+
+# File used to cache the most recent scan results across restarts
+SCAN_RESULTS_FILE = 'shipping_results.json'
+
+# In-process scan state — read and written by the background thread and Flask routes.
+# The GIL makes individual dict-value reads/writes safe without an explicit lock.
+_scan = {
+    'running':  False,    # True while a scan is in progress
+    'done':     0,        # number of listings processed so far
+    'total':    0,        # total listings to process in this run
+    'error':    None,     # error message if the scan failed, else None
+    'finished': None,     # ISO-8601 UTC timestamp when the last scan completed
+}
+
+
+def _load_scan_results():
+    """Loads cached scan results from disk. Returns empty list if not found."""
+    try:
+        with open(SCAN_RESULTS_FILE) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+
+
+def _save_scan_results(results):
+    """Persists scan results to disk so they survive server restarts."""
+    with open(SCAN_RESULTS_FILE, 'w') as f:
+        json.dump(results, f, indent=2)
+
+
+@app.route('/shipping')
+def shipping():
+    """
+    Shipping scanner page.
+    Shows the cached results from the last scan (if any) and a button to
+    start a new scan. The scan itself runs in a background thread.
+    """
+    results = _load_scan_results()              # load last cached results from disk
+    return render_template(
+        'shipping.html',
+        results=results,                        # list of classified listing dicts
+        scan=_scan,                             # live scan-state dict for the template
+    )
+
+
+@app.route('/api/scan/start', methods=['POST'])
+def start_scan():
+    """
+    Starts a background shipping scan if one is not already running.
+    Returns immediately with {status: 'started'} or {status: 'already_running'}.
+    The client polls /api/scan/status to track progress.
+    """
+    if _scan['running']:
+        return jsonify({'status': 'already_running'})
+
+    def _run():
+        """Background thread: runs the scan and saves results when done."""
+        _scan['running'] = True
+        _scan['done']    = 0
+        _scan['total']   = 0
+        _scan['error']   = None
+
+        def _progress(done, total):
+            """Callback invoked by shipping_scanner after each listing is processed."""
+            _scan['done']  = done    # update shared progress counter
+            _scan['total'] = total   # update shared total (set once on first call)
+
+        try:
+            cfg = load_config('config.yaml')                      # fresh config for this run
+            results = shipping_scanner.run_scan(                  # do the actual work
+                cfg,
+                max_results=cfg.get('scan', {}).get('max_results', 96),    # from config or default
+                workers=cfg.get('scan', {}).get('workers', 10),            # from config or default
+                progress_cb=_progress,
+            )
+            _save_scan_results(results)                           # persist to disk
+        except Exception as e:
+            _scan['error'] = str(e)                               # store error for the status endpoint
+            print(f"[SCAN] Fatal error: {e}")
+        finally:
+            _scan['running']  = False                             # clear the running flag
+            _scan['finished'] = datetime.utcnow().isoformat()     # record completion time
+
+    threading.Thread(target=_run, daemon=True).start()            # daemon=True: thread exits with the process
+    return jsonify({'status': 'started'})
+
+
+@app.route('/api/scan/status')
+def scan_status():
+    """
+    Returns the current scan state as JSON.
+    Polled by the shipping.html page every 2 seconds while a scan is running.
+    """
+    results = _load_scan_results()              # check how many results are currently saved
+    return jsonify({
+        'running':  _scan['running'],           # bool — is a scan active?
+        'done':     _scan['done'],              # int  — listings processed so far
+        'total':    _scan['total'],             # int  — total listings in this run
+        'error':    _scan['error'],             # str|null — error message if failed
+        'finished': _scan['finished'],          # str|null — ISO timestamp of last completion
+        'count':    len(results),               # int  — number of results cached on disk
+    })
 
 
 # ── Application entry point ───────────────────────────────────────────────────
