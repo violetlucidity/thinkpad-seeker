@@ -1,3 +1,6 @@
+# Port the web app listens on. Change this if 5000 is already in use on your machine.
+port: 5000
+
 govdeals:
   enabled: true
   base_url: "https://www.govdeals.com"

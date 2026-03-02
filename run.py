@@ -423,5 +423,7 @@ def scan_status():
 # ── Application entry point ───────────────────────────────────────────────────
 
 if __name__ == '__main__':
+    # Port is read from config.yaml ('port' key); defaults to 5000 if not set.
+    port = config.get('port', 5000)
     # host='0.0.0.0' makes the app reachable from your phone over Tailscale
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)

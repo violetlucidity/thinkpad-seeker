@@ -81,10 +81,15 @@ NO_SHIP_PHRASES = [
 # Default HTTP headers — mimic a real browser to avoid being blocked
 _HEADERS = {
     'User-Agent': (
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
-        '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    )
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    ),
+    'Accept': 'application/json, text/html, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
 }
+
+# Set by fetch_search_page() when the search request fails — surfaced to the UI
+_last_search_error = None
 
 
 # ── Core detection logic ──────────────────────────────────────────────────────
@@ -151,75 +156,147 @@ def fetch_search_page(base_url, page, timeout=15):
     """
     Fetches one page of GovDeals search results for 'thinkpad' with no state filter.
 
+    GovDeals migrated from the old /index.cfm URLs to a new React-based site at
+    /en/search. The new site exposes a JSON search API that we call directly.
+
     Returns a list of listing dicts: {id, title, url, price, location}.
     Returns empty list on network error or when no results are found.
-
-    TODO: Verify the search URL query-string parameters against the live GovDeals site.
-    TODO: Replace the CSS selectors below with the actual ones from live GovDeals HTML.
+    On error, sets a module-level error string so the caller can report it to the UI.
     """
-    # state= left empty to search all US states (not just ME and MA like the main tracker)
-    search_url = (
-        f"{base_url}/index.cfm?fa=Main.AdvSearchResultsNew"
-        f"&searchPg={page}&kWord=thinkpad&state="
-        f"&category=&sortBy=ad&Agency=0&sType=1&aucType="
-        f"&pricelow=&pricehigh=&pgSize=96"
+    global _last_search_error
+    _last_search_error = None
+
+    # GovDeals new site uses a JSON search API.  The offset is 0-based.
+    offset = (page - 1) * 96
+    api_url = (
+        f"{base_url}/api/assets/search"
+        f"?keyword=thinkpad&limit=96&offset={offset}&status=open"
     )
 
     try:
-        resp = requests.get(search_url, headers=_HEADERS, timeout=timeout)
+        resp = requests.get(api_url, headers=_HEADERS, timeout=timeout)
         resp.raise_for_status()
+        data = resp.json()
+    except requests.HTTPError as e:
+        msg = f"GovDeals search returned HTTP {e.response.status_code} — the site may be blocking automated requests. Try opening the scanner from a browser on the same machine."
+        print(f"[SCAN] {msg}")
+        _last_search_error = msg
+        return []
     except Exception as e:
-        print(f"[SCAN] Search page {page} failed: {e}")
+        msg = f"Search page {page} failed: {e}"
+        print(f"[SCAN] {msg}")
+        _last_search_error = msg
         return []
 
-    soup = BeautifulSoup(resp.text, 'html.parser')
+    # The JSON response contains an 'assets' (or 'results' / 'items') array.
+    # Try the most likely key names; if none match we fall back to HTML parsing.
+    raw_items = (
+        data.get('assets') or
+        data.get('results') or
+        data.get('items') or
+        data.get('data') or
+        []
+    )
 
-    # TODO: Replace with the actual listing card container selector from live GovDeals HTML
-    items = soup.select('div.listingContainer, div.item-card, li.listing-item')
+    if not raw_items:
+        # API returned JSON but not in the expected shape — fall back to HTML scraping
+        print(f"[SCAN] JSON API returned no items; trying HTML parse as fallback.")
+        return _parse_html_search(resp.text, base_url)
 
     listings = []
-    for item in items:
+    for item in raw_items:
         try:
-            # TODO: Replace each selector below with the correct one from live HTML
-            title_el = item.select_one('a.item-title, h3.listing-title, .title a')
-            price_el = item.select_one('.current-bid, .price, .bid-amount')
-            loc_el   = item.select_one('.location, .agency-location, .city-state')
-            link_el  = item.select_one('a[href]')
-
-            title    = title_el.get_text(strip=True) if title_el else ''
-            price_raw = price_el.get_text(strip=True) if price_el else '0'
-            location = loc_el.get_text(strip=True)   if loc_el   else ''
-            href     = link_el['href']                if link_el  else ''
-
-            # Make relative URLs absolute
+            title      = item.get('title') or item.get('description') or item.get('name') or ''
+            price      = float(item.get('currentBid') or item.get('price') or item.get('startingBid') or 0)
+            location   = item.get('location') or item.get('city') or item.get('state') or ''
+            listing_id = str(item.get('id') or item.get('assetId') or item.get('itemId') or '')
+            href       = item.get('url') or item.get('detailUrl') or ''
             if href and not href.startswith('http'):
                 href = base_url.rstrip('/') + '/' + href.lstrip('/')
+            if not href and listing_id:
+                href = f"{base_url}/en/assets/{listing_id}"
 
-            # Parse price: strip $ and commas, take first token
-            price_str = price_raw.replace('$', '').replace(',', '').strip()
-            try:
-                price = float(price_str.split()[0]) if price_str else 0.0
-            except ValueError:
-                price = 0.0
-
-            # Extract stable listing ID from the URL query string
-            if 'itemnum=' in href:
-                listing_id = href.split('itemnum=')[-1].split('&')[0]
-            else:
-                listing_id = href          # fall back to full URL as ID
-
-            if not listing_id or not title or not href:
-                continue                   # skip malformed / empty rows
+            if not listing_id or not title:
+                continue
 
             listings.append({
-                'id':       f'scan-{listing_id}',   # prefix avoids collision with tracker IDs
+                'id':       f'scan-{listing_id}',
                 'title':    title,
                 'url':      href,
                 'price':    price,
                 'location': location,
             })
         except Exception:
-            continue                       # skip individual parse errors silently
+            continue
+
+    return listings
+
+
+def _parse_html_search(html, base_url):
+    """
+    Fallback HTML parser for GovDeals search results.
+    Used when the JSON API is unavailable or returns an unexpected shape.
+    Inspect the GovDeals page source in your browser (F12 → Elements) and
+    update the selectors below to match the actual class names you see.
+    """
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # Selector list covers both old (.cfm era) and new (/en) site class names.
+    # Update these with real class names found via browser DevTools if they stop working.
+    items = soup.select(
+        'div.listingContainer, '          # old .cfm site
+        'div.item-card, '                 # generic
+        'li.listing-item, '               # generic list variant
+        '[class*="AssetCard"], '          # new React site (class may contain "AssetCard")
+        '[class*="asset-card"], '         # new React site kebab-case variant
+        '[class*="search-result-item"]'   # another common pattern
+    )
+
+    if not items:
+        print(f"[SCAN] HTML fallback found 0 listing containers. "
+              f"Open GovDeals in your browser, inspect an auction card (F12 → Elements), "
+              f"and update the selectors in _parse_html_search().")
+
+    listings = []
+    for item in items:
+        try:
+            title_el  = item.select_one('a.item-title, h3.listing-title, .title a, [class*="title"] a, [class*="Title"] a')
+            price_el  = item.select_one('.current-bid, .price, .bid-amount, [class*="bid"], [class*="price"]')
+            loc_el    = item.select_one('.location, .agency-location, .city-state, [class*="location"]')
+            link_el   = item.select_one('a[href]')
+
+            title     = title_el.get_text(strip=True) if title_el else ''
+            price_raw = price_el.get_text(strip=True) if price_el else '0'
+            location  = loc_el.get_text(strip=True)   if loc_el   else ''
+            href      = link_el['href']                if link_el  else ''
+
+            if href and not href.startswith('http'):
+                href = base_url.rstrip('/') + '/' + href.lstrip('/')
+
+            price_str = price_raw.replace('$', '').replace(',', '').strip()
+            try:
+                price = float(price_str.split()[0]) if price_str else 0.0
+            except ValueError:
+                price = 0.0
+
+            listing_id = (
+                href.split('itemnum=')[-1].split('&')[0] if 'itemnum=' in href
+                else href.rstrip('/').split('/')[-1] if href
+                else ''
+            )
+
+            if not listing_id or not title or not href:
+                continue
+
+            listings.append({
+                'id':       f'scan-{listing_id}',
+                'title':    title,
+                'url':      href,
+                'price':    price,
+                'location': location,
+            })
+        except Exception:
+            continue
 
     return listings
 
@@ -245,8 +322,11 @@ def run_scan(config, max_results=96, workers=10, progress_cb=None):
 
     # Step 1 — collect listings from search results pages (fetch up to 2 pages)
     all_listings = []
+    search_error = None
     for page in range(1, 3):                    # pages 1 and 2 (up to 192 raw results)
         page_results = fetch_search_page(base_url, page)
+        if _last_search_error and not search_error:
+            search_error = _last_search_error   # capture the first error message
         all_listings.extend(page_results)
         if not page_results:
             break                               # stop early if a page returned nothing
@@ -256,6 +336,10 @@ def run_scan(config, max_results=96, workers=10, progress_cb=None):
     listings = all_listings[:max_results]       # cap at the requested limit
     total = len(listings)
     print(f"[SCAN] {total} listings to process.")
+
+    # If we got nothing and there was a search error, raise so the caller can show it
+    if total == 0 and search_error:
+        raise RuntimeError(search_error)
 
     # Shared counter — incremented inside worker threads.
     # Safe without a lock because the GIL serialises integer increments in CPython.
