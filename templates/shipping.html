@@ -170,6 +170,31 @@
       color: #aaa;
     }
 
+    /* ── Section divider row inside the table ───────────────────────────── */
+    .section-divider td {
+      background: #f8d7da;
+      color: #721c24;
+      font-weight: 700;
+      font-size: 0.82rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.35rem 0.75rem;
+      border-top: 2px solid #f5c6cb;
+      border-bottom: 1px solid #f5c6cb;
+    }
+
+    .section-divider-ships td {
+      background: #d4edda;
+      color: #155724;
+      font-weight: 700;
+      font-size: 0.82rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.35rem 0.75rem;
+      border-top: 2px solid #c3e6cb;
+      border-bottom: 1px solid #c3e6cb;
+    }
+
     /* ── Summary counts ─────────────────────────────────────────────── */
     .summary {
       font-size: 0.85rem;
@@ -234,7 +259,28 @@
       </tr>
     </thead>
     <tbody>
+      {# Track which section dividers have already been inserted #}
+      {% set ns = namespace(saw_ships=false, saw_unknown=false, saw_no_ship=false) %}
       {% for r in results %}
+
+        {# Insert a section header bar before the first listing of each status group #}
+        {% if r.ships == 'ships' and not ns.saw_ships %}
+          {% set ns.saw_ships = true %}
+          <tr class="section-divider-ships">
+            <td colspan="6">&#10003; Ships — {{ n_ships }} listing{{ 's' if n_ships != 1 }}</td>
+          </tr>
+        {% elif r.ships == 'unknown' and not ns.saw_unknown %}
+          {% set ns.saw_unknown = true %}
+          <tr class="section-divider" style="background:#e9ecef;color:#555;border-top-color:#dee2e6;border-bottom-color:#dee2e6;">
+            <td colspan="6">? Unknown — {{ n_unknown }} listing{{ 's' if n_unknown != 1 }}</td>
+          </tr>
+        {% elif r.ships == 'no_ship' and not ns.saw_no_ship %}
+          {% set ns.saw_no_ship = true %}
+          <tr class="section-divider">
+            <td colspan="6">&#10007; Pickup Only — {{ n_no_ship }} listing{{ 's' if n_no_ship != 1 }} &mdash; does not ship</td>
+          </tr>
+        {% endif %}
+
       <tr class="row-{{ r.ships }}">
         <!-- Checkbox with data-url for the Open Selected button -->
         <td class="col-check">
@@ -401,6 +447,7 @@ document.getElementById('open-selected-btn').addEventListener('click', async () 
 
 // ── Column sort ─────────────────────────────────────────────────────────────
 // Click any column header to sort the table by that column.
+// Section-divider rows are skipped during sort and re-inserted afterwards.
 const table = document.getElementById('results-table');
 if (table) {
     let lastCol = null;      // tracks which column was sorted last
@@ -408,6 +455,15 @@ if (table) {
 
     // Order used for the 'ships' column: ships first, unknown second, no_ship last
     const shipOrder = { ships: 0, unknown: 1, no_ship: 2 };
+
+    // Map a data row to its status key for divider re-insertion
+    function rowStatus(row) {
+        const badge = row.querySelector('.badge');
+        if (!badge) return null;
+        if (badge.classList.contains('badge-ships'))   return 'ships';
+        if (badge.classList.contains('badge-no_ship')) return 'no_ship';
+        return 'unknown';
+    }
 
     table.querySelectorAll('th[data-col]').forEach(th => {
         th.addEventListener('click', () => {
@@ -424,35 +480,56 @@ if (table) {
             // Apply indicator to the clicked header
             th.classList.add(ascending ? 'sorted-asc' : 'sorted-desc');
 
-            // Sort the <tbody> rows in place
             const tbody = table.tBodies[0];
-            const rows = Array.from(tbody.rows);   // snapshot into an array
+            const allRows = Array.from(tbody.rows);
 
-            rows.sort((a, b) => {
-                // Read the cell value for the sort column from each row
+            // Separate divider rows from data rows
+            const dividers = {};   // keyed by status: 'ships', 'unknown', 'no_ship'
+            const dataRows = [];
+            for (const row of allRows) {
+                if (row.classList.contains('section-divider') ||
+                    row.classList.contains('section-divider-ships')) {
+                    // Determine which status this divider belongs to
+                    const text = row.textContent;
+                    if (text.includes('Pickup Only'))    dividers['no_ship']  = row;
+                    else if (text.includes('Unknown'))   dividers['unknown']  = row;
+                    else                                 dividers['ships']    = row;
+                } else {
+                    dataRows.push(row);
+                }
+            }
+
+            // Sort only the data rows
+            dataRows.sort((a, b) => {
                 const cellIndex = th.cellIndex;
                 const av = a.cells[cellIndex].textContent.trim();
                 const bv = b.cells[cellIndex].textContent.trim();
 
                 let cmp;
                 if (col === 'price') {
-                    // Numeric sort: strip $ and parse as float
                     cmp = parseFloat(av.replace('$', '') || 0) -
                           parseFloat(bv.replace('$', '') || 0);
                 } else if (col === 'ships') {
-                    // Custom order: Ships → Unknown → Pickup only
-                    const aTag = a.querySelector('.badge')?.className.replace('badge badge-', '') || 'unknown';
-                    const bTag = b.querySelector('.badge')?.className.replace('badge badge-', '') || 'unknown';
-                    cmp = (shipOrder[aTag] ?? 1) - (shipOrder[bTag] ?? 1);
+                    const aKey = rowStatus(a) || 'unknown';
+                    const bKey = rowStatus(b) || 'unknown';
+                    cmp = (shipOrder[aKey] ?? 1) - (shipOrder[bKey] ?? 1);
                 } else {
-                    // Alphabetical sort for text columns
                     cmp = av.localeCompare(bv);
                 }
-                return ascending ? cmp : -cmp;   // reverse if descending
+                return ascending ? cmp : -cmp;
             });
 
-            // Re-insert rows in the sorted order
-            rows.forEach(row => tbody.appendChild(row));
+            // Re-insert: place each divider immediately before the first row of its group
+            tbody.innerHTML = '';
+            const seen = new Set();
+            for (const row of dataRows) {
+                const status = rowStatus(row);
+                if (status && !seen.has(status) && dividers[status]) {
+                    tbody.appendChild(dividers[status]);
+                    seen.add(status);
+                }
+                tbody.appendChild(row);
+            }
         });
     });
 }
