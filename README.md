@@ -37,7 +37,7 @@ source .venv/bin/activate
 On Windows (PowerShell):
 
 ```powershell
-python -m venv .venv
+py -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
@@ -45,6 +45,11 @@ python -m venv .venv
 
 ```bash
 pip install -r requirements.txt
+```
+
+**Windows alternative** (if `pip` is not recognised):
+```cmd
+py -m pip install -r requirements.txt
 ```
 
 ### 4. Edit `config.yaml`
