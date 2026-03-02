@@ -48,13 +48,13 @@ source .venv/bin/activate
 
 **Windows (PowerShell):**
 ```powershell
-python -m venv .venv
+py -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
 **Windows (Command Prompt):**
 ```cmd
-python -m venv .venv
+py -m venv .venv
 .venv\Scripts\activate.bat
 ```
 
@@ -66,6 +66,11 @@ python -m venv .venv
 ```bash
 # Reads requirements.txt and installs every listed package
 pip install -r requirements.txt
+```
+
+**Windows alternative** (if `pip` is not recognised as a command):
+```cmd
+py -m pip install -r requirements.txt
 ```
 
 ---
@@ -401,6 +406,11 @@ A package is missing. Install everything again:
 pip install -r requirements.txt
 ```
 
+**Windows alternative** (if `pip` is not recognised):
+```cmd
+py -m pip install -r requirements.txt
+```
+
 ### "git push" was rejected
 
 Someone else (or Claude Code) pushed to the branch since your last pull.
@@ -414,8 +424,7 @@ git push
 
 ## 11. Full First-Time Setup Checklist
 
-Copy and paste this whole block to get from zero to running in one go
-(Mac/Linux):
+**Mac/Linux** — paste this whole block:
 
 ```bash
 git clone https://github.com/violetlucidity/thinkpad-seeker.git
@@ -423,7 +432,18 @@ cd thinkpad-seeker
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python run.py
+python3 run.py
+```
+
+**Windows (PowerShell)** — paste this whole block:
+
+```powershell
+git clone https://github.com/violetlucidity/thinkpad-seeker.git
+cd thinkpad-seeker
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+py -m pip install -r requirements.txt
+py run.py
 ```
 
 Then open **http://localhost:5000** in your browser.
